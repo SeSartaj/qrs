@@ -57,7 +57,7 @@ The only serialization code that is not a crypto primitive is the deterministic 
 ## Install / build / test
 
 ```bash
-cd qrs-core-package
+cd qrs-core-js
 npm install
 npm run build     # compile to dist/
 npm test          # run Vitest

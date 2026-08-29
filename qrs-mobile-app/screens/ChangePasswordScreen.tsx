@@ -36,7 +36,9 @@ export function ChangePasswordScreen({ navigation }: Props) {
     setError(null);
     setDone(false);
     if (configured) {
-      if (!(await verifyAdminPassword(cur))) {
+      // Changing the password must never be authorized by the cached trust
+      // action window; the entered current password must match the hash now.
+      if (!(await verifyAdminPassword(cur, { requireFresh: true }))) {
         setError('Current password is incorrect.');
         return;
       }

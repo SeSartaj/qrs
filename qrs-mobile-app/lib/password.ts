@@ -80,9 +80,18 @@ export async function setAdminPassword(password: string): Promise<boolean> {
   return true;
 }
 
-/** Verify a candidate password against the stored hash. */
-export async function verifyAdminPassword(password: string): Promise<boolean> {
-  if (Date.now() < authenticatedUntil) return true;
+/**
+ * Verify a candidate password against the stored hash.
+ *
+ * The short authentication window is useful for a sequence of trust actions,
+ * but callers changing the password must verify the entered current password
+ * against the stored hash every time.
+ */
+export async function verifyAdminPassword(
+  password: string,
+  options: { requireFresh?: boolean } = {},
+): Promise<boolean> {
+  if (!options.requireFresh && Date.now() < authenticatedUntil) return true;
   const raw = await AsyncStorage.getItem(KEY);
   if (!raw) return false;
   try {

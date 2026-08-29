@@ -145,7 +145,7 @@ python manage.py runserver 0.0.0.0:8000
 
 # Node bridge deps (qrs-core)
 npm install            # installs qrs-core + its deps (linked via yalc)
-# after changing qrs-core: (cd ../qrs-core-package && npx yalc publish) && npx yalc update qrs-core
+# after changing qrs-core: (cd ../qrs-core-js && npx yalc publish) && npx yalc update qrs-core
 
 # Tests
 python manage.py test api

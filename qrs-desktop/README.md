@@ -2,7 +2,7 @@
 
 A production-oriented **Electron** desktop app for the **SDoc Verification Protocol**. It is an offline-first **issuer and verifier**: create certificates (TCert), sign documents (SDoc), verify them offline, and manage trust & revocation — all on-device, no network required.
 
-It is built on the [`qrs-core`](../qrs-core-package) package, which is the *single shared protocol layer* used by every platform. The mobile (React Native) verifier you build later will reuse the exact same `qrs-core` APIs — the desktop app does **not** duplicate protocol logic.
+It is built on the [`qrs-core`](../qrs-core-js) package, which is the *single shared protocol layer* used by every platform. The mobile (React Native) verifier you build later will reuse the exact same `qrs-core` APIs — the desktop app does **not** duplicate protocol logic.
 
 > Note on a shared `common/` folder: it was deliberately **not** used. The genuinely shared layer is `qrs-core` itself (it ships Node, browser and React Native entry points). The only app-local shared code is the typed IPC contract in [`src/shared/`](src/shared), which is required for type-safe Electron main ↔ renderer communication.
 
@@ -65,7 +65,7 @@ The app depends on `qrs-core`, which is linked with **yalc** so you can develop 
 
 ```bash
 # 1. Publish the core package to the local yalc store (from the core package)
-cd ../qrs-core-package
+cd ../qrs-core-js
 npm run build
 npx yalc publish
 
@@ -91,7 +91,7 @@ npm run dist           # build + electron-builder (installers: dmg/nsis/AppImage
 When `qrs-core` changes, re-publish it and refresh the link:
 
 ```bash
-cd ../qrs-core-package && npm run build && npx yalc publish
+cd ../qrs-core-js && npm run build && npx yalc publish
 cd ../qrs-desktop && npx yalc update
 ```
 

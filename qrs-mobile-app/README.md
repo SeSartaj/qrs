@@ -1,7 +1,7 @@
 # QRS Verifier (React Native)
 
 A mobile verification app for the **SDoc Verification Protocol**, built on the
-shared [`qrs-core`](../qrs-core-package) library (React Native / WebCrypto runtime).
+shared [`qrs-core`](../qrs-core-js) library (React Native / WebCrypto runtime).
 It is an **admin-configurable verifier**: scan or paste any signed object and get a
 clean, easy-to-understand verdict — plus password-protected trust management.
 
@@ -70,7 +70,7 @@ clean, easy-to-understand verdict — plus password-protected trust management.
 ```bash
 cd src/qrs-mobile-app
 npm install
-# link the shared core (must be published first: cd ../qrs-core-package && npx yalc publish)
+# link the shared core (must be published first: cd ../qrs-core-js && npx yalc publish)
 npx yalc add qrs-core
 
 npx expo start          # then press a / i / w for Android / iOS / web

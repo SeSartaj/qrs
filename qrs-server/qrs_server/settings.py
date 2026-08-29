@@ -172,7 +172,7 @@ MAILERS = {
 
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://licensing.afda.gov.af",
+    "https://qr.afda.gov.af",
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

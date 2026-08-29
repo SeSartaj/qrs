@@ -1,6 +1,6 @@
 {
   "name": "qrs-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SDoc Verification Protocol desktop app (Electron). Offline-first issuer & verifier built on the qrs-core package.",
   "main": "./out/main/index.js",
   "author": "qrs",
@@ -29,7 +29,6 @@
     "dayjs": "^1.11.23",
     "i18next": "^26.3.6",
     "qrcode.react": "^4.2.0",
-    "qrs-core": "file:.yalc/qrs-core",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-i18next": "^17.0.11",
@@ -44,9 +43,10 @@
     "@types/react-dom": "^19.2.4",
     "@types/stylis": "^4.2.7",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^43.4.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "qrs-core": "file:.yalc/qrs-core",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"

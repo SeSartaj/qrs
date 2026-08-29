@@ -15,9 +15,13 @@
           {
             "UTTypeIdentifier": "org.qrs.verifier.qrs",
             "UTTypeDescription": "QRS signed object",
-            "UTTypeConformsTo": ["public.data"],
+            "UTTypeConformsTo": [
+              "public.data"
+            ],
             "UTTypeTagSpecification": {
-              "public.filename-extension": ["qrs"],
+              "public.filename-extension": [
+                "qrs"
+              ],
               "public.mime-type": "application/x-qrs"
             }
           }
@@ -26,7 +30,9 @@
           {
             "CFBundleTypeName": "QRS signed object",
             "LSHandlerRank": "Owner",
-            "LSItemContentTypes": ["org.qrs.verifier.qrs"]
+            "LSItemContentTypes": [
+              "org.qrs.verifier.qrs"
+            ]
           }
         ]
       }
@@ -37,15 +43,22 @@
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
-      "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
           "data": [
-            { "mimeType": "application/x-qrs" },
-            { "mimeType": "application/octet-stream" }
+            {
+              "mimeType": "application/x-qrs"
+            },
+            {
+              "mimeType": "application/octet-stream"
+            }
           ]
         }
       ],
@@ -56,6 +69,11 @@
     },
     "plugins": [
       "react-native-quick-crypto"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f053a1f0-2f37-4c01-8616-ac976683ec91"
+      }
+    }
   }
 }
