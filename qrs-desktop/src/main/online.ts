@@ -165,7 +165,7 @@ export class OnlineService {
   }
 
   /**
-   * Upload a signed attachment object (base64url) to every distribution endpoint.
+   * Upload a raw attachment file to every distribution endpoint.
    * The object is stored locally and queued for each unreachable mirror.
    */
   async submitRawAttachment(input: {
@@ -175,12 +175,12 @@ export class OnlineService {
     onlineEndpoints?: string[];
     hash: string;
     size: number;
-    /** Signed attachment object bytes, base64url encoded. */
+    /** Raw file bytes, base64url encoded only inside the desktop process. */
     contentB64: string;
   }): Promise<{ id: string; queued: boolean; error?: string }> {
     this.storeObject('attachment', input.hash, input.contentB64);
     const endpoints = input.onlineEndpoints ?? [];
-    if (endpoints.length === 0) return { id: input.hash, queued: false };
+    if (endpoints.length === 0) return { id: input.hash, queued: true, error: 'no distribution endpoint configured' };
     let allOk = true;
     let firstError: string | undefined;
     for (const endpoint of endpoints) {
@@ -270,7 +270,11 @@ export class OnlineService {
         remaining.push(entry);
         continue;
       }
-      if (caTcertId && entry.caTcertId !== caTcertId) {
+      // CA-scoped filtering applies to statements, which carry an explicit CA
+      // scope. Attachments carry their issuing TCert instead; when syncing a CA
+      // we select its endpoint and let the server validate that TCert's
+      // enrollment, rather than dropping the attachment before retrying it.
+      if (caTcertId && entry.kind === 'statement' && entry.caTcertId !== caTcertId) {
         remaining.push(entry);
         continue;
       }
@@ -320,7 +324,7 @@ export class OnlineService {
     }, `/api/cas/${encodeURIComponent(entry.caTcertId)}/statements/`);
   }
 
-  /** Upload a queued signed attachment object to a mirror. */
+  /** Upload a queued raw attachment file to a mirror. */
   private async uploadRawOne(
     entry: PendingObject,
     input: { keyId: string; tcertId: string; fieldName: string; hash: string; size: number; contentB64: string }
@@ -328,14 +332,15 @@ export class OnlineService {
     const token = await getToken(entry.onlineEndpoint, entry.keyId);
     if (!token) return { ok: false };
     try {
+      const bytes = Buffer.from(input.contentB64, 'base64url');
+      const form = new FormData();
+      form.append('tcertId', input.tcertId);
+      form.append('fieldName', input.fieldName);
+      form.append('file', new Blob([bytes]), `${input.hash}.bin`);
       const res = await fetch(`${baseUrl(entry.onlineEndpoint)}/api/attachments/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          tcertId: input.tcertId,
-          fieldName: input.fieldName,
-          bytesB64: input.contentB64,
-        }),
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
       });
       if (res.ok) return { ok: true };
       const body = (await res.json().catch(() => null)) as { error?: unknown } | null;

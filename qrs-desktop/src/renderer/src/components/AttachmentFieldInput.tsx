@@ -12,6 +12,8 @@ interface Props {
   /** The issuing TCert's key + distribution endpoints to upload to (fan-out). */
   attachmentContext?: { keyId: string; tcertId: string; onlineEndpoints?: string[] };
   showNotice?: (severity: 'success' | 'error' | 'info', text: string) => void;
+  onAttachmentUploadState?: (fieldName: string, uploaded: boolean) => void;
+  onAttachmentUploadBusy?: (fieldName: string, uploading: boolean) => void;
   disabled?: boolean;
 }
 
@@ -21,20 +23,29 @@ interface Props {
  * type is fixed by this field's signed TCert schema and cannot be changed while
  * signing a document.
  */
-export function AttachmentFieldInput({ field, value, onChange, attachmentContext, showNotice, disabled }: Props) {
+export function AttachmentFieldInput({ field, value, onChange, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy, disabled }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AttachmentSubmitResult | null>(null);
   const contentType = attachmentContentType(field);
   const ref = (value as { hash?: unknown } | null | undefined) ?? null;
-  const hash = typeof ref?.hash === 'string' ? ref.hash : undefined;
+  const hash = typeof value === 'string' ? value : typeof ref?.hash === 'string' ? ref.hash : undefined;
 
   const onFile = async (file: File | null): Promise<void> => {
     if (!file || disabled) return;
+    onAttachmentUploadState?.(field.name, false);
+    onAttachmentUploadBusy?.(field.name, true);
     setBusy(true);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      if (contentType !== 'application/octet-stream' && file.type.toLowerCase() !== contentType) {
+      const acceptedType = contentType.toLowerCase();
+      const selectedType = file.type.toLowerCase();
+      const matchesType =
+        acceptedType === 'application/octet-stream' ||
+        (acceptedType.endsWith('/*')
+          ? selectedType.startsWith(acceptedType.slice(0, -1))
+          : selectedType === acceptedType);
+      if (!matchesType) {
         showNotice?.('error', `This field only accepts ${contentType}; selected file is ${file.type || 'an unknown type'}`);
         return;
       }
@@ -58,6 +69,7 @@ export function AttachmentFieldInput({ field, value, onChange, attachmentContext
         return;
       }
       const res = submit.value;
+      onAttachmentUploadState?.(field.name, !res.queued && !res.error);
       setFileName(file.name);
       setResult(res);
       if (res.error) {
@@ -69,6 +81,7 @@ export function AttachmentFieldInput({ field, value, onChange, attachmentContext
       onChange(res.hash); // SDoc stores only the content hash
     } finally {
       setBusy(false);
+      onAttachmentUploadBusy?.(field.name, false);
     }
   };
 

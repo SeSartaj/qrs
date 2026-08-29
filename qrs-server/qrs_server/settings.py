@@ -27,6 +27,8 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get("QRS_ALLOWED_HOSTS", "*").spl
 # containers (mounted as a named volume), so the DB survives rebuilds.
 DATA_DIR = Path(os.environ.get("QRS_DATA_DIR", str(BASE_DIR)))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+MEDIA_ROOT = DATA_DIR / "media"
+MEDIA_URL = "/media/"
 
 
 # Application definition

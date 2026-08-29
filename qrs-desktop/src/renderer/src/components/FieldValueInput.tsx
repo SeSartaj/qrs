@@ -12,13 +12,15 @@ interface Props {
   /** Upload context for attachment fields (issuing TCert keyId + endpoints). */
   attachmentContext?: { keyId: string; tcertId: string; onlineEndpoints?: string[] };
   showNotice?: (severity: 'success' | 'error' | 'info', text: string) => void;
+  onAttachmentUploadState?: (fieldName: string, uploaded: boolean) => void;
+  onAttachmentUploadBusy?: (fieldName: string, uploading: boolean) => void;
 }
 
 /**
  * Renders an input appropriate for a field type. Used at issuance time and shared
  * by all pages that need to collect field values.
  */
-export function FieldValueInput({ field, value, onChange, disabled, attachmentContext, showNotice }: Props) {
+export function FieldValueInput({ field, value, onChange, disabled, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy }: Props) {
   // A field with a declared default is auto-filled at signing time (e.g. a hidden
   // `issuedAt` datetime) — it is not shown in the form.
   if (field.default !== undefined) return null;
@@ -195,6 +197,8 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={onChange}
           attachmentContext={attachmentContext}
           showNotice={showNotice}
+          onAttachmentUploadState={onAttachmentUploadState}
+          onAttachmentUploadBusy={onAttachmentUploadBusy}
           disabled={disabled}
         />
       );

@@ -6,13 +6,14 @@ import { dialog, shell } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
-import { parseAttachment, toBase64Url, verifyAttachmentReference } from 'qrs-core';
+import { attachmentReference, toBase64Url, verifyAttachmentReference } from 'qrs-core';
 import { getOnlineService } from './online.js';
 
 /**
  * Fetch a RAW attachment from a mirror. Returns metadata by default ({ id,
  * contentType, size, contentHash }); pass `content=true` to also fetch the file
- * body as base64url `contentB64`. Checks the local cache first.
+ * body as raw bytes. The returned `contentB64` is only the local IPC payload
+ * used to hand verified bytes to the Electron renderer/OS.
  */
 export async function fetchRawAttachment(
   id: string,
@@ -26,9 +27,8 @@ export async function fetchRawAttachment(
   const list = Array.isArray(onlineEndpoints) ? onlineEndpoints : onlineEndpoints ? [onlineEndpoints] : [];
   if (content && local) {
     try {
-      const attachment = parseAttachment(local);
-      if (!verifyAttachmentReference(id, attachment.content)) return null;
-      return { id, contentType, size: attachment.content.byteLength, contentHash: attachment.contentHash, contentB64: toBase64Url(attachment.content) };
+      if (!verifyAttachmentReference(id, local)) return null;
+      return { id, contentType, size: local.byteLength, contentHash: attachmentReference(local), contentB64: toBase64Url(local) };
     } catch {
       return null;
     }
@@ -39,25 +39,19 @@ export async function fetchRawAttachment(
       const suffix = content ? '?content=1' : '';
       const res = await fetch(`${base}/api/attachments/${id}/${suffix}`);
       if (!res.ok) continue;
-      const body = (await res.json()) as { id?: string; contentType?: string; size?: number; contentHash?: string; bytesB64?: string };
-      let downloaded: Uint8Array | undefined;
-      if (content && body.bytesB64) {
-        try {
-          const signed = Buffer.from(body.bytesB64, 'base64url');
-          const attachment = parseAttachment(signed);
-          if (!verifyAttachmentReference(id, attachment.content)) continue;
-          online.storeObject('attachment', id, body.bytesB64);
-          downloaded = attachment.content;
-        } catch {
-          continue;
-        }
+      if (content) {
+        const downloaded = new Uint8Array(await res.arrayBuffer());
+        if (!verifyAttachmentReference(id, downloaded)) continue;
+        const encoded = toBase64Url(downloaded);
+        online.storeObject('attachment', id, encoded);
+        return { id, contentType, size: downloaded.byteLength, contentHash: attachmentReference(downloaded), contentB64: encoded };
       }
+      const body = (await res.json()) as { id?: string; contentType?: string; size?: number; contentHash?: string };
       return {
         id: body.id ?? id,
         contentType,
-        size: body.size ?? downloaded?.byteLength ?? 0,
+        size: body.size ?? 0,
         contentHash: body.contentHash ?? id,
-        contentB64: downloaded ? toBase64Url(downloaded) : undefined,
       };
     } catch {
       /* try the next mirror */

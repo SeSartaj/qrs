@@ -7,17 +7,15 @@
  * a small dialog asks the user, and resolves when the renderer replies. It is
  * fully unit-testable because the window reference is injected.
  *
- * Attachment objects (signed objects referenced by a content-addressed hash) are
- * resolved here: first from the local attachments store (where the issuer keeps
- * the signed objects it created), then from the TCert's `online_endpoint` if the
- * local copy is absent. The fetched object is *not* trusted — the verification
- * pipeline verifies its signature and hash binding.
+ * Raw attachments referenced by a content-addressed hash are resolved here
+ * from the local object store or distribution endpoints. Downloaded bytes are
+ * verified against the hash before being returned.
  */
 import { adaptProvider, type GeoPoint, type IContextProvider } from 'qrs-core';
 import { app, type BrowserWindow } from 'electron';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fromBase64Url } from 'qrs-core';
+import { verifyAttachmentReference } from 'qrs-core';
 import type { FieldSchema } from 'qrs-core';
 import { IPC, type ContextReply } from '../shared/types.js';
 
@@ -61,18 +59,18 @@ export class DesktopContextProvider implements IContextProvider {
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
-  /** Fetch a signed attachment object: local store first, then each distribution mirror in order. */
+  /** Fetch raw attachment bytes and verify them against the content hash. */
   async requestObject(id: string, _field?: FieldSchema, onlineEndpoints?: string | string[]): Promise<Uint8Array | null> {
     const local = this.localObject(id);
-    if (local) return local;
+    if (local && verifyAttachmentReference(id, local)) return local;
     const list = Array.isArray(onlineEndpoints) ? onlineEndpoints : onlineEndpoints ? [onlineEndpoints] : [];
     for (const ep of list) {
       try {
         const base = ep.replace(/\/+$/, '');
-        const res = await fetch(`${base}/api/attachments/${id}/`);
+        const res = await fetch(`${base}/api/attachments/${id}/?content=1`);
         if (!res.ok) continue;
-        const body = (await res.json()) as { bytesB64?: string };
-        if (body.bytesB64) return fromBase64Url(body.bytesB64);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (verifyAttachmentReference(id, bytes)) return bytes;
       } catch {
         /* try the next mirror */
       }
@@ -110,8 +108,6 @@ export class DesktopContextProvider implements IContextProvider {
       // New store layout (round 5+): <userData>/objects/attachment/<id>
       const candidates = [
         join(userData, 'objects', 'attachment', safe),
-        // Legacy layout kept for data created before the objects store existed.
-        join(userData, 'attachments', safe),
       ];
       for (const file of candidates) {
         try {

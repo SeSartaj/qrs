@@ -120,11 +120,9 @@ class SignedObject(models.Model):
 class Attachment(models.Model):
     """A raw file stored by its content-addressed hash.
 
-    The SDoc stores only `{ hash, size }` for an attachment field. The server
-    stores the RAW file bytes keyed by `hash` (not a base64 signed object), so
-    the DB stays small and the verifier downloads the file on demand by hash and
-    checks the hash matches. `size` lets the verifier show the file size without
-    downloading it first.
+    The SDoc stores only the truncated hash for an attachment field. The server
+    stores a normal uploaded file keyed by that hash; it never stores a signed
+    attachment object or base64 payload.
     """
 
     id = models.CharField(max_length=32, primary_key=True)  # first 128 bits of SHA-256
@@ -135,9 +133,7 @@ class Attachment(models.Model):
     content_type = models.CharField(max_length=128, default="application/octet-stream")
     content_hash = models.CharField(max_length=64, blank=True)  # full hash hex
     size = models.BigIntegerField(default=0)  # file size in bytes
-    content = models.BinaryField(default=b"", blank=True)  # the RAW file bytes
-    object_b64 = models.TextField(default="", blank=True)  # signed attachment object
-    signed_at = models.BigIntegerField(default=0)  # epoch seconds (attachment issuedAt)
+    file = models.FileField(upload_to="attachments/")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -33,6 +33,8 @@ export function SignSdocPage({ tcert, onBack, onIssued, showNotice }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentSummary | null>(null);
+  const [uploadedAttachments, setUploadedAttachments] = useState<Record<string, boolean>>({});
+  const [uploadingAttachments, setUploadingAttachments] = useState<Record<string, boolean>>({});
 
   const issue = async (): Promise<void> => {
     setError(null);
@@ -41,6 +43,13 @@ export function SignSdocPage({ tcert, onBack, onIssued, showNotice }: Props) {
     const missing = signFields.filter((f) => f.inputRules?.required === true && isMissing(values[f.name]));
     if (missing.length > 0) {
       setError(`${t('documents.missingRequired')}: ${missing.map((f) => f.label).join(', ')}`);
+      return;
+    }
+    const notUploaded = signFields.filter(
+      (f) => f.type === 'attachment' && f.inputRules?.required === true && !uploadedAttachments[f.name]
+    );
+    if (notUploaded.length > 0) {
+      setError(`Required attachment must be uploaded before signing: ${notUploaded.map((f) => f.label).join(', ')}`);
       return;
     }
     setBusy(true);
@@ -103,12 +112,14 @@ export function SignSdocPage({ tcert, onBack, onIssued, showNotice }: Props) {
                       onlineEndpoints: tcert.endpoints ?? [],
                     }}
                     showNotice={showNotice}
+                    onAttachmentUploadState={(name, uploaded) => setUploadedAttachments((prev) => ({ ...prev, [name]: uploaded }))}
+                    onAttachmentUploadBusy={(name, uploading) => setUploadingAttachments((prev) => ({ ...prev, [name]: uploading }))}
                   />
                 </Grid>
               ))}
           </Grid>
           <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-            <Button variant="contained" onClick={() => void issue()} disabled={busy}>
+            <Button variant="contained" onClick={() => void issue()} disabled={busy || Object.values(uploadingAttachments).some(Boolean)}>
               {busy ? t('documents.issuing') : t('documents.sign')}
             </Button>
             <Button variant="text" onClick={onBack}>

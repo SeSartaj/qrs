@@ -11,7 +11,7 @@ Cryptographic verification is delegated to `qrs-core` through a tiny Node bridge
 ```
  issuer host ──(register TCert)──► server
  issuer host ──(challenge → PoW → token)──► server
- issuer host ──(upload signed statement / attachment)──► server   [server verifies]
+ issuer host ──(upload signed statement / raw attachment file)──► server
  verifier    ──(GET via TCert.online_endpoint)──► server          [verifier verifies]
 ```
 
@@ -49,15 +49,15 @@ Cryptographic verification is delegated to `qrs-core` through a tiny Node bridge
      blockSdoc, unblockSdoc). The server **cryptographically verifies the signature**
      against the TCert's public key before storing it, and only accepts known
      statement actions.
-   - `type: "attachment"` — the bytes of a **signed attachment object** (a
-     self-contained signed object of type `attachment` whose static schema is
-     `{ id, contentType, contentHash, content, issuedAt }`). The server verifies the
-     signature, then stores it keyed by `id` (the truncated content hash).
+   - `type: "attachment"` — a normal multipart file upload. The server hashes
+     the file with SHA-256 and stores it as a Django `FileField` keyed by the
+     truncated hash. The SDoc carries that truncated hash; no signed attachment
+     object or base64 file payload is used.
 4. **Verifiers fetch.** Anyone can `GET /api/tcerts/` (discovery — returns the
    full TCert bytes via `bytesB64`, so attested certificates and CA roots can be
-   downloaded), `GET /api/tcerts/<keyId>/objects/` (list statements + attachments,
-   each statement carrying its signed bytes) and `GET /api/attachments/<id>/` (the
-   signed attachment object). The verifier finds the server through the TCert's
+   downloaded), `GET /api/tcerts/<keyId>/objects/` (list statements + attachment
+   metadata) and `GET /api/attachments/<id>/` (attachment metadata or raw file).
+   The verifier finds the server through the TCert's
    `online_endpoint` property, downloads, and verifies everything client-side —
    **it never trusts the server.** Because hosted statements are signed, a verifier
    can download and *apply* them locally: attestations extend the trust graph and
@@ -77,19 +77,14 @@ implementation.
 
 ## Attachment integrity
 
-Attachments are **independent signed objects**: an attachment field in a signed
-SDoc stores a single content-addressed id (the truncated sha256 of the content).
-The signed attachment object itself carries `{ id, contentType, contentHash,
-content, issuedAt }` and is signed by the issuing TCert's key, so a verifier that
-downloads it:
-
-1. verifies the object's signature against the TCert's public key,
-2. checks that `contentHash` matches the stored id (`contentHash.startsWith(id)`),
-3. checks the schema-declared `contentType` (from the TCert schema) matches.
-
-The server therefore never needs to be trusted for attachments either — it is a
-content-addressed cache; it verifies the signature on upload but the verifier
-re-checks everything client-side.
+An attachment field in a signed SDoc stores a single content-addressed id: the
+first 128 bits of the file's SHA-256 digest. The server calculates the full
+digest itself, stores the raw file through Django's `FileField`, and exposes
+metadata publicly plus the raw file on `?content=1`. A verifier downloads the
+raw file when policy requires it, calculates SHA-256 locally, truncates it, and
+compares it with the signed SDoc value. Required attachments are part of the
+document verification decision; optional attachments are checked only when the
+verifier downloads or opens them.
 
 ## Proof-of-work details
 
@@ -127,7 +122,8 @@ registered, 400 otherwise).
 | POST | `/api/tcerts/import/` | — | Upload a `.qrs` file (single TCert or bundle) to register its TCerts |
 | POST | `/api/tcerts/<keyId>/challenge/` | — | Get a PoW challenge |
 | POST | `/api/tcerts/<keyId>/token/` | — | Redeem a solved challenge for a token |
-| POST | `/api/tcerts/<keyId>/objects/` | Bearer | Upload a statement (verified) or attachment |
+| POST | `/api/tcerts/<keyId>/objects/` | Bearer | Legacy object endpoint (statements use dedicated endpoints) |
+| POST | `/api/attachments/` | Bearer | Upload a raw multipart file for an admitted TCert field |
 | GET | `/api/tcerts/<keyId>/objects/` | — | List hosted statements + attachments |
 | GET | `/api/attachments/<id>/` | — | Fetch attachment content |
 

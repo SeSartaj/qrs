@@ -4,7 +4,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { app, dialog, ipcMain, nativeImage } from 'electron';
-import { attachmentContentType, encodeBundle, encodeQrsFile, fromBase64Url, parseSignedObject, parseStatement, QRS_FILE_EXTENSION, sdocIdOf, toBase64Url } from 'qrs-core';
+import { attachmentReference, encodeBundle, encodeQrsFile, fromBase64Url, parseSignedObject, parseStatement, QRS_FILE_EXTENSION, sdocIdOf, toBase64Url } from 'qrs-core';
 import {
   IPC,
   type AppInfo,
@@ -448,8 +448,8 @@ export function registerIpc(rt: DesktopRuntime): void {
   /* ---------------- attachments / online distribution ---------------- */
   const online = getOnlineService();
   ipcMain.handle(IPC.attachments.submit, async (_e, input: AttachmentSubmitInput): Promise<AttachmentSubmitResult> => {
-    // The renderer sends raw file bytes. Build a separate signed attachment
-    // object; the SDoc stores its compact content-addressed reference.
+    // The renderer sends raw file bytes. The SDoc stores only the truncated
+    // SHA-256 content-addressed reference; the server stores the raw file.
     const bytes = fromBase64Url(input.bytesB64);
     const tcertBytes = await rt.qrs.deps.certificateStore.get(input.tcertId);
     if (!tcertBytes) throw new Error(`Issuing TCert not found: ${input.tcertId}`);
@@ -459,12 +459,7 @@ export function registerIpc(rt: DesktopRuntime): void {
       (candidate) => candidate.type === 'attachment' && candidate.name === input.fieldName
     );
     if (!field) throw new Error(`Attachment field not found in issuing TCert: ${input.fieldName}`);
-    const signed = await rt.qrs.attachments.build({
-      keyId: input.keyId,
-      contentType: attachmentContentType(field as never),
-      content: bytes,
-    });
-    const hash = signed.attachmentId;
+    const hash = attachmentReference(bytes);
     const size = bytes.byteLength;
     const endpoints =
       (input.onlineEndpoints && input.onlineEndpoints.length > 0)
@@ -477,7 +472,7 @@ export function registerIpc(rt: DesktopRuntime): void {
       onlineEndpoints: endpoints,
       hash,
       size,
-      contentB64: toBase64Url(signed.bytes),
+      contentB64: toBase64Url(bytes),
     });
     return { hash, size, queued: res.queued, error: res.error };
   });

@@ -45,12 +45,16 @@ async function upload(endpoint, keyId, token, payload) {
 }
 
 async function uploadAttachment(endpoint, token, payload) {
+  const form = new FormData();
+  form.append('tcertId', payload.tcertId);
+  form.append('fieldName', payload.fieldName);
+  form.append('file', new Blob([payload.file]), 'attachment.bin');
   const res = await fetch(`${endpoint}/api/attachments/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
   });
-  return { status: res.status, body: await res.json() };
+  return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
 // ---- build a TCert (with online_endpoint) + a signed statement ----
@@ -93,13 +97,11 @@ console.log('upload statement:', stmt.status, stmt.status === 201 ? 'OK' : JSON.
 // ---- 4. upload a raw attachment through its signed TCert field schema ----
 const attContent = new TextEncoder().encode('hello from the desktop client');
 const reference = attachmentReference(attContent);
-const attId = reference.hash;
+const attId = reference;
 const att = await uploadAttachment(base, token, {
-  keyId: key,
   tcertId: tcert.tcertId,
   fieldName: 'evidence',
-  hash: attId,
-  contentB64: toBase64Url(attContent),
+  file: attContent,
 });
 console.log('upload attachment:', att.status, att.status === 201 ? 'OK' : JSON.stringify(att.body));
 
@@ -116,9 +118,8 @@ const discHasBytes = !!discCert?.bytesB64 && discCert.bytesB64 === toBase64Url(t
 console.log('discovery bytesB64:', discHasBytes ? 'OK' : 'FAIL');
 
 // ---- 7. fetch raw attachment content and verify its compact reference locally ----
-const got = await (await fetch(`${base}/api/attachments/${attId}/?content=1`)).json();
-const fetchedContent = fromBase64Url(got.contentB64);
-const contentMatch = attachmentReference(fetchedContent).hash === attId;
+const fetchedContent = new Uint8Array(await (await fetch(`${base}/api/attachments/${attId}/?content=1`)).arrayBuffer());
+const contentMatch = attachmentReference(fetchedContent) === attId;
 console.log('fetch attachment + verify:', contentMatch ? 'OK' : 'FAIL');
 
 // ---- 8. a fresh verifier downloads the hosted statement and applies it ----

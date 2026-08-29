@@ -35,9 +35,11 @@ type ShowNotice = (severity: 'success' | 'error' | 'info', text: string) => void
 interface DocumentsPageProps {
   showNotice: ShowNotice;
   onVerify: (bytesB64: string) => void;
+  initialTcertId?: string | null;
+  onInitialTcertOpened?: () => void;
 }
 
-export function DocumentsPage({ showNotice, onVerify }: DocumentsPageProps) {
+export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialTcertOpened }: DocumentsPageProps) {
   const { t } = useTranslation();
   const [tcerts, setTcerts] = useState<TcertSummary[]>([]);
   const [knownTcerts, setKnownTcerts] = useState<TcertSummary[]>([]);
@@ -76,8 +78,9 @@ export function DocumentsPage({ showNotice, onVerify }: DocumentsPageProps) {
   useEffect(() => {
     void (async () => {
       await reload();
-      const initial = (window as unknown as { __qrsInitialTcert?: string }).__qrsInitialTcert;
+      const initial = initialTcertId ?? (window as unknown as { __qrsInitialTcert?: string }).__qrsInitialTcert;
       if (initial) setSelectedTcertId(initial);
+      if (initialTcertId) onInitialTcertOpened?.();
     })();
     // Dev/screenshot: the host injects __qrsInitialTcert just after load, so re-check.
     const t = setTimeout(() => {
@@ -85,7 +88,7 @@ export function DocumentsPage({ showNotice, onVerify }: DocumentsPageProps) {
       if (initial) setSelectedTcertId(initial);
     }, 1200);
     return () => clearTimeout(t);
-  }, [reload]);
+  }, [reload, initialTcertId, onInitialTcertOpened]);
 
   const selectedTcert = useMemo(
     () => (selectedTcertId ? (tcerts.find((x) => x.tcertId === selectedTcertId) ?? null) : null),
@@ -173,9 +176,14 @@ export function DocumentsPage({ showNotice, onVerify }: DocumentsPageProps) {
     if (res.value.uploaded > 0) parts.push(`uploaded ${res.value.uploaded}`);
     if (res.value.downloaded > 0) parts.push(`downloaded ${res.value.downloaded}`);
     if (res.value.applied > 0) parts.push(`applied ${res.value.applied}`);
+    const summary = parts.length > 0
+      ? `Sync: ${parts.join(', ')}`
+      : res.value.pending > 0
+        ? `Sync completed — ${res.value.pending} upload(s) still pending`
+        : 'Sync completed — nothing new to upload or download';
     showNotice(
       parts.length > 0 ? 'success' : 'info',
-      parts.length > 0 ? `Sync: ${parts.join(', ')}` : 'Nothing to sync — no online endpoint configured'
+      summary
     );
     void reload();
   };

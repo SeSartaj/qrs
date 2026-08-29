@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 import { Layout, type PageId } from './components/Layout';
 import { ContextDialogHost } from './components/ContextDialogHost';
@@ -14,6 +14,7 @@ export default function App() {
   const [page, setPage] = useState<PageId>('documents');
   const [notice, setNotice] = useState<{ severity: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [pendingVerify, setPendingVerify] = useState<string | null>(null);
+  const [initialTcertId, setInitialTcertId] = useState<string | null>(null);
 
   // Allow the host (screenshot tooling) to navigate pages.
   useEffect(() => {
@@ -27,17 +28,26 @@ export default function App() {
   const showNotice = (severity: 'success' | 'error' | 'info', text: string): void =>
     setNotice({ severity, text });
 
+  const handleTcertCreated = useCallback((tcertId: string): void => {
+    setInitialTcertId(tcertId);
+    setPage('documents');
+  }, []);
+
+  const clearInitialTcert = useCallback((): void => setInitialTcertId(null), []);
+
   const pages: Record<PageId, ReactNode> = {
     documents: (
       <DocumentsPage
         showNotice={showNotice}
+        initialTcertId={initialTcertId}
+        onInitialTcertOpened={clearInitialTcert}
         onVerify={(b64) => {
           setPendingVerify(b64);
           setPage('verify');
         }}
       />
     ),
-    issue: <IssuerPage showNotice={showNotice} />,
+    issue: <IssuerPage showNotice={showNotice} onCreated={handleTcertCreated} />,
     verify: (
       <VerifyPage
         initialBytesB64={pendingVerify ?? undefined}

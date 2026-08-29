@@ -133,7 +133,7 @@ function draftToSchema(f: DraftField): FieldSchema {
   return field;
 }
 
-export function IssuerPage({ showNotice }: { showNotice: ShowNotice }) {
+export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; onCreated: (tcertId: string) => void }) {
   const { t } = useTranslation();
   const [algorithm, setAlgorithm] = useState<AlgorithmId>('Ed25519');
   const [name, setName] = useState('');
@@ -220,6 +220,7 @@ export function IssuerPage({ showNotice }: { showNotice: ShowNotice }) {
     }
     setCreatedTcert({ tcertId: res.value.tcertId, keyId: res.value.keyId, name: res.value.name, bytesB64: res.value.bytesB64 });
     showNotice('success', `TCert created: ${shortId(res.value.tcertId)}`);
+    onCreated(res.value.tcertId);
   };
 
   return (

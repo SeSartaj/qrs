@@ -11,6 +11,7 @@ import secrets
 from datetime import timedelta
 
 from django.conf import settings
+from django.http import FileResponse
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
@@ -467,7 +468,11 @@ class ObjectsView(APIView):
 
 
 class AttachmentUpload(APIView):
-    """Upload a signed attachment object for a TCert admitted by a trusted CA."""
+    """Upload a normal file for a TCert admitted by a trusted CA.
+
+    The attachment ID is derived by the server from the uploaded file. The
+    protocol carries only the truncated SHA-256 ID in the signed SDoc.
+    """
 
     throttle_scope = "register"
 
@@ -475,10 +480,10 @@ class AttachmentUpload(APIView):
         data = request.data or {}
         tcert_id = str(data.get("tcertId") or "").strip()
         field_name = str(data.get("fieldName") or "").strip()
-        bytes_b64 = data.get("bytesB64") or ""
-        if not bytes_b64 or not tcert_id or not field_name:
+        uploaded = request.FILES.get("file")
+        if uploaded is None or not tcert_id or not field_name:
             return Response(
-                {"error": "bytesB64, tcertId and fieldName required"},
+                {"error": "file, tcertId and fieldName required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -504,42 +509,57 @@ class AttachmentUpload(APIView):
         )
         if attachment_field is None:
             return Response({"error": "attachment field not found in TCert schema"}, status=status.HTTP_400_BAD_REQUEST)
-        content_type = str(
+        declared_content_type = str(
             (attachment_field.get("inputRules") or {}).get("contentType") or "application/octet-stream"
         ).strip().lower()
-        verified = verify_object(tcert.tcert_b64, bytes_b64)
-        if not verified.get("ok") or verified.get("objectType") != "attachment" or verified.get("signerKeyId") != tcert.key_id:
-            return Response({"error": verified.get("error") or "attachment signature verification failed"}, status=status.HTTP_400_BAD_REQUEST)
-        hash_hex = str(verified.get("id") or "").strip().lower()
-        computed = str(verified.get("contentHash") or "").strip().lower()
-        content_b64 = str(verified.get("contentB64") or "")
-        if len(hash_hex) != 32 or len(computed) != 64 or not content_b64 or computed[:32] != hash_hex:
-            return Response({"error": "malformed signed attachment content hash"}, status=status.HTTP_400_BAD_REQUEST)
-        if str(verified.get("contentType") or "").strip().lower() != content_type:
-            return Response({"error": "attachment content type does not match the TCert schema"}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            import base64
-            raw = base64.urlsafe_b64decode(content_b64 + "=" * (-len(content_b64) % 4))
-        except Exception:
-            return Response({"error": "invalid signed attachment content"}, status=status.HTTP_400_BAD_REQUEST)
+        uploaded_content_type = str(getattr(uploaded, "content_type", "") or "").strip().lower()
+        # Keep a concrete MIME type for wildcard schemas. Native clients need
+        # image/png (or image/jpeg, etc.) to render the returned bytes; the
+        # schema's image/* is only an acceptance rule.
+        content_type = (
+            uploaded_content_type
+            if declared_content_type.endswith("/*")
+            and uploaded_content_type.startswith(declared_content_type[:-1])
+            else declared_content_type
+        )
+        if uploaded.size is not None and uploaded.size > 100 * 1024 * 1024:
+            return Response({"error": "attachment exceeds the 100 MB limit"}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        digest = hashlib.sha256()
+        total_size = 0
+        for chunk in uploaded.chunks():
+            digest.update(chunk)
+            total_size += len(chunk)
+        computed = digest.hexdigest()
+        hash_hex = computed[:32]
+        uploaded.seek(0)
         existing = Attachment.objects.filter(id=hash_hex).first()
         if existing is not None and existing.content_hash != computed:
             return Response({"error": "attachment ID collision"}, status=status.HTTP_409_CONFLICT)
-        Attachment.objects.update_or_create(
-            id=hash_hex,
-            defaults={
-                "tcert": tcert,
-                "key_id": tcert.key_id,
-                "content_type": content_type,
-                "content_hash": computed,
-                "size": len(raw),
-                "content": raw,
-                "object_b64": bytes_b64,
-                "signed_at": int(verified.get("signedAt") or 0),
-            },
-        )
+        if existing is None:
+            attachment = Attachment(
+                id=hash_hex,
+                tcert=tcert,
+                key_id=tcert.key_id,
+                content_type=content_type,
+                content_hash=computed,
+                size=total_size,
+            )
+            attachment.file.save(f"{hash_hex}.bin", uploaded, save=False)
+            attachment.save()
+        else:
+            attachment = existing
+            # An attachment row may have been created by an older server
+            # version (or by a partially completed upload) without a stored
+            # file. Re-uploading the same content must repair that row rather
+            # than treating the metadata record as a complete upload.
+            if not attachment.file.name or attachment.size != total_size:
+                attachment.file.save(f"{hash_hex}.bin", uploaded, save=False)
+                attachment.size = total_size
+                attachment.content_type = content_type
+                attachment.content_hash = computed
+                attachment.save(update_fields=["file", "size", "content_type", "content_hash"])
         return Response(
-            {"id": hash_hex, "size": len(raw), "contentType": content_type, "type": "attachment"},
+            {"id": hash_hex, "size": attachment.size, "contentType": content_type, "contentHash": computed, "type": "attachment"},
             status=status.HTTP_201_CREATED,
         )
 
@@ -549,7 +569,7 @@ class AttachmentDetail(APIView):
 
     Returns metadata only by default ({ id, contentType, size, contentHash }) so
     a verifier can show the size WITHOUT downloading the file. Pass `?content=1`
-    to get the file body as `contentB64` (base64url).
+    to get the raw file body.
     """
 
     def get(self, request, attachment_id):
@@ -564,12 +584,12 @@ class AttachmentDetail(APIView):
             "contentType": att.content_type,
             "size": att.size,
         }
-        if att.object_b64:
-            meta["bytesB64"] = att.object_b64
         if request.query_params.get("content") not in (None, "0", "false"):
-            import base64
-            b64 = base64.urlsafe_b64encode(bytes(att.content)).decode("ascii")
-            meta["contentB64"] = b64
+            response = FileResponse(att.file.open("rb"), content_type=att.content_type)
+            response["Content-Length"] = str(att.size)
+            response["Content-Disposition"] = f'inline; filename="{att.id}"'
+            response["ETag"] = f'"{att.content_hash}"'
+            return response
         return Response(meta)
 
     def head(self, request, attachment_id):

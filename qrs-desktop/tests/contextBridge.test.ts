@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
+import { attachmentReference } from 'qrs-core';
 import { DesktopContextProvider } from '../src/main/contextBridge.js';
 import type { ContextRequest } from '../src/shared/types.js';
 
@@ -64,17 +65,18 @@ describe('DesktopContextProvider', () => {
     expect(() => ctx.reply({ requestId: 'nope', value: null })).not.toThrow();
   });
 
-  it('fetches a signed attachment object from the online endpoint by id', async () => {
-    const bytesB64 = Buffer.from('signed-object-bytes').toString('base64url');
+  it('fetches raw attachment bytes from the online endpoint by content hash', async () => {
+    const bytes = new Uint8Array(Buffer.from('attachment-bytes'));
+    const attachmentId = attachmentReference(bytes);
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toBe('http://srv.test/api/attachments/abcd1234/');
-      return { ok: true, json: async () => ({ bytesB64 }) };
+      expect(url).toBe(`http://srv.test/api/attachments/${attachmentId}/?content=1`);
+      return { ok: true, arrayBuffer: async () => bytes.buffer };
     });
     vi.stubGlobal('fetch', fetchMock);
     try {
       const ctx = new DesktopContextProvider(() => null);
-      const got = await ctx.requestObject('abcd1234', undefined, 'http://srv.test/');
-      expect(got).toEqual(new Uint8Array(Buffer.from('signed-object-bytes')));
+      const got = await ctx.requestObject(attachmentId, undefined, 'http://srv.test/');
+      expect(got).toEqual(bytes);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();

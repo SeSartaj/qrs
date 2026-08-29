@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from . import proof_of_work
-from .models import SupportedTcert, TcertToken
+from .models import Attachment, SupportedTcert, TcertToken
 
 BASE = Path(__file__).resolve().parent.parent
 NODE = shutil.which("node") or "node"
@@ -114,18 +114,17 @@ class ApiFlowTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(any(o["action"] == "revokeTcert" for o in r.json()["objects"]))
 
-        # 8. Attachments: upload a signed attachment object (keyed by hash), then
-        #    fetch it + metadata.
-        att_id = fx["attachmentId"]
+        # 8. Attachments: upload a normal file; the server calculates its ID.
+        raw_attachment = b"fake-png-bytes"
+        import hashlib
+        att_id = hashlib.sha256(raw_attachment).hexdigest()[:32]
         r = c.post(
             "/api/attachments/",
             {
-                "keyId": key,
                 "tcertId": fx["tcertId"],
                 "fieldName": "photo",
-                "bytesB64": fx["attachmentB64"],
+                "file": SimpleUploadedFile("photo.png", raw_attachment, content_type="image/png"),
             },
-            format="json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
         self.assertEqual(r.status_code, 201, r.content)
@@ -141,35 +140,35 @@ class ApiFlowTest(TestCase):
         r = c.post(
             "/api/attachments/",
             {
-                "keyId": key,
                 "tcertId": fx["tcertId"],
                 "fieldName": "not-a-field",
-                "bytesB64": fx["attachmentB64"],
+                "file": SimpleUploadedFile("photo.png", raw_attachment, content_type="image/png"),
             },
-            format="json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
         self.assertEqual(r.status_code, 400, r.content)
 
-        # ?content=1 returns the raw file body.
+        # ?content=1 returns the raw file body, not base64 JSON.
         r = c.get(f"/api/attachments/{att_id}/?content=1")
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertIn("contentB64", r.json())
+        self.assertEqual(r.content, raw_attachment)
 
-        # A tampered attachment object is rejected (signature check).
-        bad = fx["attachmentB64"][:-1] + ("B" if not fx["attachmentB64"].endswith("B") else "A")
+        # Re-uploading the same attachment repairs a metadata-only row left by
+        # an older/partial upload.
+        Attachment.objects.filter(id=att_id).update(file="")
         r = c.post(
             "/api/attachments/",
             {
-                "keyId": key,
                 "tcertId": fx["tcertId"],
                 "fieldName": "photo",
-                "bytesB64": bad,
+                "file": SimpleUploadedFile("photo.png", raw_attachment, content_type="image/png"),
             },
-            format="json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 201, r.content)
+        r = c.get(f"/api/attachments/{att_id}/?content=1")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.content, raw_attachment)
 
     def test_scoped_sync(self):
         c = self.client
@@ -253,12 +252,10 @@ class ApiFlowTest(TestCase):
         r = c.post(
             "/api/attachments/",
             {
-                "keyId": key,
                 "tcertId": fx["tcertId"],
                 "fieldName": "photo",
-                "bytesB64": fx["attachmentB64"],
+                "file": SimpleUploadedFile("photo.png", b"fake-png-bytes", content_type="image/png"),
             },
-            format="json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
         self.assertEqual(r.status_code, 403, r.content)
@@ -413,4 +410,3 @@ class AdminImportTest(TestCase):
         r = self.client.post("/admin/api/supportedtcert/import-qrs/", {"qrs": "not-a-qrs-file"})
         self.assertEqual(r.status_code, 302, r.content)  # redirects back to the changelist with an error message
         self.assertFalse(SupportedTcert.objects.exists())
-

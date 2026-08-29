@@ -153,6 +153,33 @@ describe('OnlineService submitObject / uploadPending', () => {
     expect(uploaded).toBe(1);
     expect(pending).toBe(0);
   });
+
+  it('flushes queued attachments during a CA-scoped sync', async () => {
+    const online = tempOnline();
+    const endpoint = 'http://attachment-ca-srv';
+    mockServer({
+      [`POST ${endpoint}/api/tcerts/key-attachment/challenge/`]: () => ({ status: 500, body: {} }),
+    });
+    await online.submitRawAttachment({
+      keyId: 'key-attachment',
+      tcertId: 'target:1',
+      fieldName: 'photo',
+      onlineEndpoints: [endpoint],
+      hash: 'b'.repeat(32),
+      size: 3,
+      contentB64: toBase64Url(new TextEncoder().encode('raw')),
+    });
+    expect(online.pendingCount()).toBe(1);
+
+    mockServer({
+      [`POST ${endpoint}/api/tcerts/key-attachment/challenge/`]: () => ({ status: 200, body: { nonce: 'n', difficulty: 4 } }),
+      [`POST ${endpoint}/api/tcerts/key-attachment/token/`]: () => ({ status: 200, body: { token: 'tok' } }),
+      [`POST ${endpoint}/api/attachments/`]: () => ({ status: 201, body: { ok: true } }),
+    });
+    const result = await online.uploadPending(endpoint, 'ca:1');
+    expect(result.uploaded).toBe(1);
+    expect(result.pending).toBe(0);
+  });
 });
 
 describe('syncTcert (CA-scoped sync) download + apply', () => {
