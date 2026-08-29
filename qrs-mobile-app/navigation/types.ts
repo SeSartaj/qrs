@@ -3,7 +3,7 @@ import type { ProcessOutcome } from '../lib/process';
 
 export type RootStackParamList = {
   Tabs: undefined;
-  Result: { result: CleanVerifyResult };
+  Result: { result?: CleanVerifyResult; loading?: boolean; raw?: string };
   Processed: { outcome: ProcessOutcome };
   ChangePassword: undefined;
   Data: undefined;

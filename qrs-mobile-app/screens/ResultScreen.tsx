@@ -21,6 +21,7 @@ import { AttachmentFieldView } from '../components/AttachmentFieldView';
 import { verdictColor, VERIFIED_BLUE, SUCCESS, ERROR, WARNING } from '../lib/theme';
 import { formatEpoch, formatFieldValue, getSettings, selectV2Option, type DateFormat } from '../lib/settings';
 import type { CleanVerifyResult, CaView } from '../lib/verify';
+import { verifySdoc } from '../lib/verify';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
@@ -127,10 +128,21 @@ function CheckRow({ label, state, message }: { label: string; state: string; mes
 
 export function ResultScreen({ route, navigation }: Props) {
   const theme = useTheme();
-  const { result } = route.params;
+  const [result, setResult] = useState<CleanVerifyResult | null>(route.params.result ?? null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dateFormat, setDateFormat] = useState<DateFormat>('gregorian');
   const [activeCa, setActiveCa] = useState(0);
+
+  React.useEffect(() => {
+    if (!route.params.loading || !route.params.raw) return;
+    let active = true;
+    void verifySdoc(route.params.raw).then((verified) => {
+      if (active) setResult(verified);
+    }).catch(() => {
+      if (active) navigation.goBack();
+    });
+    return () => { active = false; };
+  }, [navigation, route.params.loading, route.params.raw]);
 
   // Load the user's date-format preference for displaying datetimeEpoch values.
   React.useEffect(() => {
@@ -138,6 +150,21 @@ export function ResultScreen({ route, navigation }: Props) {
       setDateFormat((await getSettings()).dateFormat);
     })();
   }, []);
+
+  if (!result) {
+    return (
+      <View style={styles.root}>
+        <Appbar.Header>
+          <Appbar.BackAction onPress={() => navigation.goBack()} />
+          <Appbar.Content title="Result" />
+        </Appbar.Header>
+        <View style={styles.loadingResult}>
+          <Text variant="titleMedium">Verifying document…</Text>
+          <Text variant="bodyMedium">Downloading and checking required attachments.</Text>
+        </View>
+      </View>
+    );
+  }
 
   const cannotVerify = result.verdict === 'cannotVerify';
   const color = verdictColor(result.verdict, theme.dark);
@@ -335,6 +362,7 @@ export function ResultScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  loadingResult: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   content: { padding: 16, paddingBottom: 40 },
   nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 4 },
   caCard: { borderRadius: 14, borderWidth: 2, padding: 12, marginBottom: 8 },

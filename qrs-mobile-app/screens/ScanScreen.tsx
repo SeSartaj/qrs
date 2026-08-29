@@ -14,7 +14,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { processPayload, type ProcessOutcome } from '../lib/process';
+import { processPayload, sdocPayload, type ProcessOutcome } from '../lib/process';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Tabs'>;
 
@@ -49,6 +49,13 @@ export function ScanScreen({ navigation }: { navigation: Nav }) {
   const runProcess = async (raw: string): Promise<void> => {
     setBusy(true);
     setError(null);
+    const sdoc = sdocPayload(raw);
+    if (sdoc) {
+      setBusy(false);
+      setScanned(false);
+      navigation.navigate('Result', { loading: true, raw: sdoc });
+      return;
+    }
     try {
       const outcome: ProcessOutcome = await processPayload(raw);
       if (outcome.kind === 'verified') navigation.navigate('Result', { result: outcome.result });

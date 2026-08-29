@@ -20,7 +20,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { addHistory, historyVerdictColor, loadHistory, type HistoryEntry } from '../lib/history';
 import { pickQrsFile } from '../lib/fileImport';
-import { processPayload } from '../lib/process';
+import { processPayload, sdocPayload } from '../lib/process';
 import { formatMs, getSettings, type DateFormat } from '../lib/settings';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Tabs'>;
@@ -47,6 +47,12 @@ export function VerifyScreen({ navigation }: { navigation: Nav }) {
   const runVerify = async (raw: string): Promise<void> => {
     setError(null);
     setBusy(true);
+    const sdoc = sdocPayload(raw);
+    if (sdoc) {
+      setBusy(false);
+      navigation.navigate('Result', { loading: true, raw: sdoc });
+      return;
+    }
     try {
       const outcome = await processPayload(raw);
       if (outcome.kind === 'verified') {

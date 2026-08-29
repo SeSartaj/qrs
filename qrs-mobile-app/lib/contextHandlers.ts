@@ -3,10 +3,10 @@
  *   - secrets  → the SecretPromptHost dialog,
  *   - location → expo-location (asks permission, feeds the current position so
  *                location-gated fields can be compared),
- *   - online objects → fetch a signed attachment from the issuing TCert's server.
+ *   - online objects → fetch attachment metadata/objects from the issuing TCert's server.
  */
 import * as Location from 'expo-location';
-import { fromBase64Url } from 'qrs-core';
+import { verifyAttachmentReference } from 'qrs-core';
 import type { ContextHandlers } from './runtime';
 import { requestSecret } from './secretPrompt';
 
@@ -28,10 +28,10 @@ export async function buildContextHandlers(): Promise<ContextHandlers> {
       for (const ep of list) {
         try {
           const base = ep.replace(/\/+$/, '');
-          const res = await fetch(`${base}/api/attachments/${id}/`);
+          const res = await fetch(`${base}/api/attachments/${id}/?content=1`);
           if (!res.ok) continue;
-          const body = (await res.json()) as { bytesB64?: string };
-          if (body.bytesB64) return fromBase64Url(body.bytesB64);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (verifyAttachmentReference(id, bytes)) return bytes;
         } catch {
           /* try the next mirror */
         }

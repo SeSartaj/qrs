@@ -15,6 +15,7 @@ import {
 import { attachmentContentType, effectiveBinding, isBoundField, isStrippedBinding } from 'qrs-core';
 import type { AttestationRecord, VerificationResult } from 'qrs-core';
 import { getQrs } from './runtime';
+import { fetchAttachmentContent } from './attachment';
 import { getSettings, type TrustPolicy } from './settings';
 import { dedupCaViews, issuerVerifiedByPolicy, resolveVerdict } from './trustPolicy';
 import type { CaView, Verdict } from './trustPolicy';
@@ -169,7 +170,49 @@ export async function verifySdoc(raw: string): Promise<CleanVerifyResult> {
   const keyId = parsed.signerKeyId;
   const tcertId = tcertIdOf(keyId, tcertNumberOf(parsed));
 
+  // Required attachments are part of the document's verification dependency:
+  // wait for them before returning a result. Optional attachments are checked
+  // only when the user downloads/opens them from AttachmentFieldView.
+  let requiredAttachmentFailure: { fieldName: string; state: 'cannotVerify' | 'invalid'; message: string } | undefined;
+  const requiredTcertBytes = await qrs.deps.certificateStore.get(tcertId);
+  if (requiredTcertBytes) {
+    try {
+      const tcert = parseSignedObject(requiredTcertBytes);
+      const schema = (tcert.data.schema ?? []) as unknown as FieldSchema[];
+      const stored = (data.fields ?? []) as unknown[];
+      const endpoints = await qrs.endpoints.effectiveEndpoints(tcertId);
+      for (let i = 0; i < schema.length; i++) {
+        const field = schema[i];
+        const reference = stored[i];
+        if (!field || field.type !== 'attachment' || field.inputRules?.required !== true || typeof reference !== 'string') continue;
+        const attachment = await fetchAttachmentContent(qrs, reference, attachmentContentType(field), endpoints);
+        if (!attachment || 'error' in attachment) {
+          const corrupt = attachment?.error === 'corrupt';
+          requiredAttachmentFailure = {
+            fieldName: field.name,
+            state: corrupt ? 'invalid' : 'cannotVerify',
+            message: corrupt
+              ? 'Required attachment is corrupted (its hash does not match the signed SDoc)'
+              : endpoints.length > 0 ? 'Required attachment could not be downloaded or verified' : 'Required attachment has no available server',
+          };
+          break;
+        }
+      }
+    } catch {
+      requiredAttachmentFailure = { fieldName: '', state: 'cannotVerify', message: 'Required attachment could not be verified' };
+    }
+  }
+
   const result = await qrs.verification.verify(bytes, { currentTime: Math.floor(Date.now() / 1000) });
+  if (requiredAttachmentFailure) {
+    result.overall = requiredAttachmentFailure.state;
+    result.message = requiredAttachmentFailure.message;
+    const fieldResult = result.fields.find((field) => field.name === requiredAttachmentFailure.fieldName);
+    if (fieldResult) {
+      fieldResult.state = requiredAttachmentFailure.state;
+      fieldResult.message = requiredAttachmentFailure.message;
+    }
+  }
 
   // Enrich with TCert identity + decoded values (best effort).
   let documentName: string | undefined;
@@ -262,7 +305,7 @@ export async function verifySdoc(raw: string): Promise<CleanVerifyResult> {
   const tcertOk = result.tcert === 'valid';
   const certificateMissing = result.tcert === 'cannotVerify';
 
-  const verdict = resolveVerdict({
+  const verdict = requiredAttachmentFailure ? requiredAttachmentFailure.state : resolveVerdict({
     issuerVerified,
     certificateMissing,
     cryptographicOk,

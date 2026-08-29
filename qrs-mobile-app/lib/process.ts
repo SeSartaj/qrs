@@ -12,6 +12,19 @@ import { decodeBundle, decodeTransferPayload, fromBase64Url, parseSignedObject }
 import { getQrs } from './runtime';
 import { verifySdoc, type CleanVerifyResult } from './verify';
 
+/** Return an SDoc payload without performing verification, for the loading result screen. */
+export function sdocPayload(raw: string): string | null {
+  try {
+    const transfer = decodeTransferPayload(raw.trim());
+    const candidate = transfer?.type === 'sdoc' ? transfer.bytesB64 : raw.trim();
+    if (!candidate) return null;
+    const parsed = parseSignedObject(fromBase64Url(candidate));
+    return parsed.type === 'sdoc' ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ProcessOutcome =
   | { kind: 'verified'; result: CleanVerifyResult }
   | { kind: 'tcert-imported'; tcertId: string; documentName?: string; issuerName?: string }
