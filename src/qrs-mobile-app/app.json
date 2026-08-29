@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "QRS Verifier",
+    "slug": "qrs-mobile-app",
+    "scheme": "qrs",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.qrs.verifier",
+      "infoPlist": {
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "org.qrs.verifier.qrs",
+            "UTTypeDescription": "QRS signed object",
+            "UTTypeConformsTo": ["public.data"],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": ["qrs"],
+              "public.mime-type": "application/x-qrs"
+            }
+          }
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "QRS signed object",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": ["org.qrs.verifier.qrs"]
+          }
+        ]
+      }
+    },
+    "android": {
+      "package": "org.qrs.verifier",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+      "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [
+            { "mimeType": "application/x-qrs" },
+            { "mimeType": "application/octet-stream" }
+          ]
+        }
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "react-native-quick-crypto"
+    ]
+  }
+}

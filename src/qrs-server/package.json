@@ -1,0 +1,14 @@
+{
+  "name": "qrs-server-verify",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Node verification bridge for the QRS Django server: reuses qrs-core to cryptographically verify signed objects (TCert/Statement) so the Python server never hand-rolls CBOR/COSE verification.",
+  "dependencies": {
+    "@noble/curves": "^2.3.0",
+    "qrs-core": "file:.yalc/qrs-core"
+  },
+  "scripts": {
+    "verify": "node verify/verify_object.mjs"
+  }
+}

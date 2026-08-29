@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block title %}Import TCert from .qrs file{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>
+    Upload a <code>.qrs</code> file (a single TCert or a bundle) exported by the desktop
+    app. Every TCert inside is <strong>self-verified</strong> (signature + key binding) and
+    then registered on this server so verifiers can discover it.
+  </p>
+  <form method="post" enctype="multipart/form-data" action="{% url 'admin:api_supportedtcert_import_qrs' %}">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <div class="form-row">
+        <label for="id_file">.qrs file:</label>
+        <input type="file" id="id_file" name="file" accept=".qrs,text/plain">
+      </div>
+      <div class="form-row">
+        <label for="id_qrs">…or paste the file text:</label>
+        <textarea id="id_qrs" name="qrs" rows="4" cols="80" placeholder="qrs://v1/tcert/..."></textarea>
+      </div>
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" value="Import TCert(s)" class="default">
+      <a href="{% url 'admin:api_supportedtcert_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

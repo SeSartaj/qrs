@@ -1,0 +1,17 @@
+import { useState } from 'react';
+import { Box, Button, Card, CardContent, Divider, Typography } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DownloadIcon from '@mui/icons-material/Download';
+import { encodeBundle } from 'qrs-core';
+import type { TcertSummary, TrustState } from '@shared/types';
+import { qrs, safe, shortId, formatDate } from '../api';
+import { ObjectActions } from '../components/ObjectActions';
+import { QRCodeDialog } from '../components/QRCodeDialog';
+
+export function AttestationDetailPage({ ca, target, attestation, onBack, showNotice }: { ca: TcertSummary; target: TcertSummary | null; attestation: NonNullable<TrustState['attestations'][number]>; onBack: () => void; showNotice: (s: 'success'|'error'|'info', m: string) => void }) {
+  const [qr, setQr] = useState<{ title: string; payload: string } | null>(null);
+  const targetName = target?.name || shortId(attestation.targetTcertId);
+  const combined = target ? encodeBundle([{ type: 'tcert', bytesB64: target.bytesB64 }, { type: 'statement', bytesB64: attestation.bytesB64 ?? '' }]) : '';
+  const downloadBundle = async (): Promise<void> => { if (!target) return; const result = await safe(qrs().objects.exportBundle({ tcertBytesB64: target.bytesB64, attestationBytesB64: attestation.bytesB64 ?? '', suggestedName: `${target.name}-attestation` })); if (result.ok && result.value.saved) showNotice('success', 'Attestation bundle exported'); else if (!result.ok) showNotice('error', `Export failed: ${result.error}`); };
+  return <Box><Button startIcon={<ArrowBackIcon />} onClick={onBack}>Back to attestations</Button><Typography variant="h5" sx={{ mb: 2 }}>Attestation details</Typography><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>CA (attester): {ca.name || shortId(ca.tcertId)} → Attested TCert: {targetName}</Typography><Typography variant="subtitle2" color="text.secondary">Attester (CA TCert)</Typography><Typography sx={{ fontFamily: 'monospace', mb: 1 }}>{ca.name || shortId(ca.tcertId)} · {shortId(ca.tcertId)}</Typography><Typography variant="subtitle2" color="text.secondary">Attested TCert</Typography><Typography sx={{ fontFamily: 'monospace', mb: 1 }}>{targetName} · {shortId(attestation.targetTcertId)}</Typography>{!target && <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>The attested TCert is not stored locally. Import it to enable TCert export and QR actions.</Typography>}<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Issued {formatDate(attestation.issuedAt)}</Typography><Divider sx={{ mb: 2 }} /><Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>{attestation.bytesB64 && <ObjectActions type="statement" bytesB64={attestation.bytesB64} fileName={`${targetName}-attestation`} qrTitle="Attestation QR" showNotice={showNotice} />}{target && <><ObjectActions type="tcert" bytesB64={target.bytesB64} fileName={target.name} qrTitle="Attested TCert QR" showNotice={showNotice}/><Button startIcon={<DownloadIcon />} variant="outlined" onClick={() => void downloadBundle()}>Download TCert + attestation</Button><Button variant="outlined" onClick={() => setQr({ title: 'TCert + attestation QR', payload: combined })}>Combined QR</Button></>}</Box></CardContent></Card><QRCodeDialog open={qr !== null} title={qr?.title ?? ''} payload={qr?.payload ?? ''} onClose={() => setQr(null)} showNotice={showNotice}/></Box>;
+}
