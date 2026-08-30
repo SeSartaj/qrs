@@ -52,7 +52,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 # The mobile app's TypeScript source lives in a directory named lib/.
 !src/qrs-mobile-app/lib/
 !src/qrs-mobile-app/lib/**
