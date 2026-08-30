@@ -22,6 +22,7 @@ import { verdictColor, VERIFIED_BLUE, SUCCESS, ERROR, WARNING } from '../lib/the
 import { formatEpoch, formatFieldValue, getSettings, selectV2Option, type DateFormat } from '../lib/settings';
 import type { CleanVerifyResult, CaView } from '../lib/verify';
 import { verifySdoc } from '../lib/verify';
+import { addHistory } from '../lib/history';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
@@ -136,7 +137,16 @@ export function ResultScreen({ route, navigation }: Props) {
   React.useEffect(() => {
     if (!route.params.loading || !route.params.raw) return;
     let active = true;
-    void verifySdoc(route.params.raw).then((verified) => {
+    void verifySdoc(route.params.raw).then(async (verified) => {
+      if ((await getSettings()).historyEnabled) {
+        await addHistory({
+          raw: route.params.raw as string,
+          documentName: verified.documentName,
+          issuerName: verified.issuerName,
+          verdict: verified.verdict,
+          ts: Date.now(),
+        });
+      }
       if (active) setResult(verified);
     }).catch(() => {
       if (active) navigation.goBack();

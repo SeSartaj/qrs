@@ -56,15 +56,27 @@ export function VerifyScreen({ navigation }: { navigation: Nav }) {
     try {
       const outcome = await processPayload(raw);
       if (outcome.kind === 'verified') {
+        if ((await getSettings()).historyEnabled) {
+          await addHistory({
+            raw,
+            documentName: outcome.result.documentName,
+            issuerName: outcome.result.issuerName,
+            verdict: outcome.result.verdict,
+            ts: Date.now(),
+          });
+          await refresh();
+        }
+        navigation.navigate('Result', { result: outcome.result });
+      } else if (outcome.kind === 'tcert-imported' && (await getSettings()).historyEnabled) {
         await addHistory({
           raw,
-          documentName: outcome.result.documentName,
-          issuerName: outcome.result.issuerName,
-          verdict: outcome.result.verdict,
+          documentName: outcome.documentName,
+          issuerName: outcome.issuerName,
+          verdict: 'stored',
           ts: Date.now(),
         });
         await refresh();
-        navigation.navigate('Result', { result: outcome.result });
+        navigation.navigate('Processed', { outcome });
       } else {
         navigation.navigate('Processed', { outcome });
       }

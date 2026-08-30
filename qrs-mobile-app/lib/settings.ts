@@ -4,14 +4,14 @@ import { convertDateParts, formatDate as formatCalendarDate } from 'tri-calendar
 export type LanguageCode = 'en' | 'ps' | 'fa';
 export type DateFormat = 'gregorian' | 'jalali' | 'islamic';
 export type TrustPolicy = 'any' | 'all';
-export interface AppSettings { language: LanguageCode; dateFormat: DateFormat; trustPolicy: TrustPolicy; }
+export interface AppSettings { language: LanguageCode; dateFormat: DateFormat; trustPolicy: TrustPolicy; historyEnabled: boolean; }
 const KEY = 'qrs.settings';
 export const LANGUAGES = [{ code: 'en', label: 'English' }, { code: 'ps', label: 'پښتو' }, { code: 'fa', label: 'فارسی' }];
 export const DATE_FORMATS = [{ code: 'gregorian', label: 'Gregorian' }, { code: 'jalali', label: 'Jalali' }, { code: 'islamic', label: 'Islamic' }];
 export const TRUST_POLICIES: Array<{ code: TrustPolicy; label: string; description: string }> = [{ code: 'any', label: 'Any trusted CA', description: 'Accept when at least one trusted CA verifies the issuer.' }, { code: 'all', label: 'All trusted CAs', description: 'Require every trusted CA to verify the issuer.' }];
 export function isRtl(language: LanguageCode): boolean { return language === 'ps' || language === 'fa'; }
 export async function getSettings(): Promise<AppSettings> {
-  try { return { language: 'en', dateFormat: 'gregorian', trustPolicy: 'any', ...JSON.parse((await AsyncStorage.getItem(KEY)) ?? '{}') }; } catch { return { language: 'en', dateFormat: 'gregorian', trustPolicy: 'any' }; }
+  try { return { language: 'en', dateFormat: 'gregorian', trustPolicy: 'any', historyEnabled: true, ...JSON.parse((await AsyncStorage.getItem(KEY)) ?? '{}') }; } catch { return { language: 'en', dateFormat: 'gregorian', trustPolicy: 'any', historyEnabled: true }; }
 }
 export async function setSettings(settings: AppSettings): Promise<void> { await AsyncStorage.setItem(KEY, JSON.stringify(settings)); }
 export function formatEpoch(epoch: number | undefined, format: DateFormat = 'gregorian'): string {

@@ -4,7 +4,7 @@
  * can jump back to its result. A clear action empties the list.
  */
 import React, { useCallback, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Appbar, Chip, Icon, List, Text, useTheme } from 'react-native-paper';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -47,8 +47,23 @@ export function HistoryScreen({ navigation }: { navigation: Nav }) {
   };
 
   const onClear = async (): Promise<void> => {
-    await clearHistory();
-    await refresh();
+    Alert.alert(
+      'Clear history?',
+      'All locally stored history entries will be permanently removed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await clearHistory();
+              await refresh();
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (

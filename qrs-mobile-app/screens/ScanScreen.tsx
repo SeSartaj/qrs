@@ -15,6 +15,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { processPayload, sdocPayload, type ProcessOutcome } from '../lib/process';
+import { addHistory } from '../lib/history';
+import { getSettings } from '../lib/settings';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Tabs'>;
 
@@ -58,6 +60,15 @@ export function ScanScreen({ navigation }: { navigation: Nav }) {
     }
     try {
       const outcome: ProcessOutcome = await processPayload(raw);
+      if (outcome.kind === 'tcert-imported' && (await getSettings()).historyEnabled) {
+        await addHistory({
+          raw,
+          documentName: outcome.documentName,
+          issuerName: outcome.issuerName,
+          verdict: 'stored',
+          ts: Date.now(),
+        });
+      }
       if (outcome.kind === 'verified') navigation.navigate('Result', { result: outcome.result });
       else navigation.navigate('Processed', { outcome });
     } catch (e) {

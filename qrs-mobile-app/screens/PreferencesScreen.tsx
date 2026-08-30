@@ -4,7 +4,7 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Appbar, Divider, List, RadioButton, Text, useTheme } from 'react-native-paper';
+import { Appbar, Divider, List, RadioButton, Switch, Text, useTheme } from 'react-native-paper';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import {
@@ -16,12 +16,15 @@ import {
   type DateFormat,
   type LanguageCode,
 } from '../lib/settings';
+import { verifyAdminPassword } from '../lib/password';
+import { PasswordDialog } from '../components/PasswordDialog';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Preferences'>;
 
 export function PreferencesScreen({ navigation }: { navigation: Nav }) {
   const theme = useTheme();
-  const [settings, setSettingsState] = useState<AppSettings>({ language: 'en', dateFormat: 'gregorian', trustPolicy: 'any' });
+  const [settings, setSettingsState] = useState<AppSettings>({ language: 'en', dateFormat: 'gregorian', trustPolicy: 'any', historyEnabled: true });
+  const [pendingHistory, setPendingHistory] = useState<boolean | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,6 +38,20 @@ export function PreferencesScreen({ navigation }: { navigation: Nav }) {
     const next = { ...settings, ...patch };
     setSettingsState(next);
     void setSettings(next);
+  };
+
+  const selectHistory = (enabled: boolean): void => {
+    if (enabled === settings.historyEnabled) return;
+    setPendingHistory(enabled);
+  };
+
+  const confirmHistory = async (password: string): Promise<boolean> => {
+    const ok = await verifyAdminPassword(password);
+    if (ok && pendingHistory !== null) {
+      update({ historyEnabled: pendingHistory });
+      setPendingHistory(null);
+    }
+    return ok;
   };
 
   return (
@@ -83,10 +100,28 @@ export function PreferencesScreen({ navigation }: { navigation: Nav }) {
           <Divider />
         </List.Section>
 
+        <List.Section>
+          <List.Subheader style={styles.sectionLabel}>HISTORY</List.Subheader>
+          <List.Item
+            title="Record processed items"
+            description="Store scanned documents and TCerts in local history"
+            left={(props) => <List.Icon {...props} icon="history" />}
+            right={() => <Switch value={settings.historyEnabled} onValueChange={selectHistory} />}
+          />
+          <Divider />
+        </List.Section>
+
         <Text variant="bodySmall" style={[styles.hint, { color: theme.colors.onSurfaceVariant }]}>
           Language and date format are stored locally on this device.
         </Text>
       </ScrollView>
+      <PasswordDialog
+        visible={pendingHistory !== null}
+        title="Change history setting"
+        message="Enter the admin password to change local history recording."
+        onCancel={() => setPendingHistory(null)}
+        onConfirm={confirmHistory}
+      />
     </View>
   );
 }
