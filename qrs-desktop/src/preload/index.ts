@@ -89,6 +89,7 @@ const api: QrsApi = {
     syncTcert: (tcertId: TcertId) => ipcRenderer.invoke(IPC.attachments.syncTcert, tcertId),
     queue: () => ipcRenderer.invoke(IPC.attachments.queue),
     pending: () => ipcRenderer.invoke(IPC.attachments.pending),
+    pendingForTcert: (tcertId: TcertId) => ipcRenderer.invoke(IPC.attachments.pendingForTcert, tcertId),
     get: (input: AttachmentGetInput) => ipcRenderer.invoke(IPC.attachments.get, input),
     open: (input: AttachmentOpenInput) => ipcRenderer.invoke(IPC.attachments.open, input),
     save: (input: AttachmentSaveInput) => ipcRenderer.invoke(IPC.attachments.save, input),

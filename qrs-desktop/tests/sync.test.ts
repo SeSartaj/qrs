@@ -182,7 +182,30 @@ describe('OnlineService submitObject / uploadPending', () => {
   });
 });
 
-describe('syncTcert (CA-scoped sync) download + apply', () => {
+describe('syncTcert distribution sync download + apply', () => {
+  it('syncs a non-CA TCert through its signed endpoint', async () => {
+    const qrs = createQrs();
+    const tcert = await qrs.certificates.createTcert({
+      algorithm: 'Ed25519',
+      name: 'Document type',
+      fields: [],
+      onlineEndpoint: 'http://srv',
+    });
+    const online = tempOnline();
+    mockServer({
+      [`GET http://srv/api/tcerts/${encodeURIComponent(tcert.keyId)}/objects/`]: () => ({
+        status: 200,
+        body: { keyId: tcert.keyId, objects: [] },
+      }),
+    });
+
+    const fakeRt = { qrs, context: null, dataDir: '' } as unknown as DesktopRuntime;
+    const result = await syncTcert(fakeRt, tcert.tcertId, online);
+
+    expect(result.errors).toEqual([]);
+    expect(result.downloaded).toBe(0);
+  });
+
   it('downloads hosted TCerts and applies signed statements', async () => {
     // Issuer side: a CA with an online endpoint revokes a target cert.
     const issuer = createQrs();

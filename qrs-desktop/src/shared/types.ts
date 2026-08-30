@@ -66,6 +66,7 @@ export const IPC = {
     syncTcert: 'attachments:syncTcert',
     queue: 'attachments:queue',
     pending: 'attachments:pending',
+    pendingForTcert: 'attachments:pendingForTcert',
     get: 'attachments:get', // fetch + decode a signed attachment for display
     open: 'attachments:open', // open a downloaded attachment with the OS default app
     save: 'attachments:save', // save a downloaded attachment via a save dialog
@@ -509,6 +510,7 @@ export interface QrsApi {
     /** List the objects currently waiting to be uploaded. */
     queue(): Promise<SyncQueueDto>;
     pending(): Promise<number>;
+    pendingForTcert(tcertId: TcertId): Promise<number>;
     get(input: AttachmentGetInput): Promise<AttachmentData | null>;
     open(input: AttachmentOpenInput): Promise<{ opened: boolean; error?: string }>;
     save(input: AttachmentSaveInput): Promise<{ saved: boolean; path?: string; error?: string }>;

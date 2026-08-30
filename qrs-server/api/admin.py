@@ -3,7 +3,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
 from django.urls import path
 
-from .models import Attachment, SignedObject, SupportedTcert, TcertChallenge, TcertToken
+from .models import AttachmentBlob, AttachmentReference, SignedObject, SupportedTcert, TcertChallenge, TcertToken
 from .views import decode_qrs_file, register_tcert_bytes
 
 
@@ -118,9 +118,14 @@ class SignedObjectAdmin(admin.ModelAdmin):
     list_display = ("action", "statement_id", "tcert", "received_at")
 
 
-@admin.register(Attachment)
-class AttachmentAdmin(admin.ModelAdmin):
-    list_display = ("id", "key_id", "content_type", "content_hash", "created_at")
+@admin.register(AttachmentBlob)
+class AttachmentBlobAdmin(admin.ModelAdmin):
+    list_display = ("id", "content_type", "content_hash", "size", "created_at")
+
+
+@admin.register(AttachmentReference)
+class AttachmentReferenceAdmin(admin.ModelAdmin):
+    list_display = ("tcert", "blob", "field_name", "created_at")
 
 
 @admin.register(TcertChallenge)

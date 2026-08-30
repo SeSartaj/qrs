@@ -20,7 +20,8 @@ from rest_framework.views import APIView
 
 from . import proof_of_work
 from .models import (
-    Attachment,
+    AttachmentBlob,
+    AttachmentReference,
     SignedObject,
     SupportedTcert,
     TcertAttestation,
@@ -453,9 +454,9 @@ class ObjectsView(APIView):
             attachments += [
                 {
                     "type": "attachment",
-                    "id": a.id,
-                    "contentType": a.content_type,
-                    "contentHash": a.content_hash,
+                    "id": a.blob_id,
+                    "contentType": a.blob.content_type,
+                    "contentHash": a.blob.content_hash,
                 }
                 for a in t.attachments.all()
             ]
@@ -468,7 +469,7 @@ class ObjectsView(APIView):
 
 
 class AttachmentUpload(APIView):
-    """Upload a normal file for a TCert admitted by a trusted CA.
+    """Upload a normal file for a registered TCert with attachment permission.
 
     The attachment ID is derived by the server from the uploaded file. The
     protocol carries only the truncated SHA-256 ID in the signed SDoc.
@@ -489,13 +490,11 @@ class AttachmentUpload(APIView):
         try:
             tcert = SupportedTcert.objects.get(tcert_id=tcert_id)
         except SupportedTcert.DoesNotExist:
-            return Response({"error": "TCert has not been admitted by a CA on this server"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "TCert has not been added to this server"}, status=status.HTTP_404_NOT_FOUND)
         if not tcert.allow_attachment_upload:
             return Response({"error": "attachment service is disabled for this TCert"}, status=status.HTTP_403_FORBIDDEN)
-        if not _is_attested_tcert(tcert):
-            return Response({"error": "TCert is not attested by a trusted CA on this server"}, status=status.HTTP_403_FORBIDDEN)
         if _valid_token(request, tcert.key_id) is None:
-            return Response({"error": "valid bearer token for the attested TCert required"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "valid bearer token for the registered TCert required"}, status=status.HTTP_401_UNAUTHORIZED)
         info = describe_tcert(tcert.tcert_b64)
         if not info.get("ok"):
             return Response({"error": "could not read TCert schema"}, status=status.HTTP_400_BAD_REQUEST)
@@ -532,14 +531,12 @@ class AttachmentUpload(APIView):
         computed = digest.hexdigest()
         hash_hex = computed[:32]
         uploaded.seek(0)
-        existing = Attachment.objects.filter(id=hash_hex).first()
+        existing = AttachmentBlob.objects.filter(id=hash_hex).first()
         if existing is not None and existing.content_hash != computed:
             return Response({"error": "attachment ID collision"}, status=status.HTTP_409_CONFLICT)
         if existing is None:
-            attachment = Attachment(
+            attachment = AttachmentBlob(
                 id=hash_hex,
-                tcert=tcert,
-                key_id=tcert.key_id,
                 content_type=content_type,
                 content_hash=computed,
                 size=total_size,
@@ -558,6 +555,11 @@ class AttachmentUpload(APIView):
                 attachment.content_type = content_type
                 attachment.content_hash = computed
                 attachment.save(update_fields=["file", "size", "content_type", "content_hash"])
+        AttachmentReference.objects.get_or_create(
+            tcert=tcert,
+            blob=attachment,
+            field_name=field_name,
+        )
         return Response(
             {"id": hash_hex, "size": attachment.size, "contentType": content_type, "contentHash": computed, "type": "attachment"},
             status=status.HTTP_201_CREATED,
@@ -574,8 +576,8 @@ class AttachmentDetail(APIView):
 
     def get(self, request, attachment_id):
         try:
-            att = Attachment.objects.get(id=attachment_id)
-        except Attachment.DoesNotExist:
+            att = AttachmentBlob.objects.get(id=attachment_id)
+        except AttachmentBlob.DoesNotExist:
             return Response({"error": "attachment not found"}, status=status.HTTP_404_NOT_FOUND)
         meta = {
             "id": att.id,
@@ -594,8 +596,8 @@ class AttachmentDetail(APIView):
 
     def head(self, request, attachment_id):
         try:
-            att = Attachment.objects.get(id=attachment_id)
-        except Attachment.DoesNotExist:
+            att = AttachmentBlob.objects.get(id=attachment_id)
+        except AttachmentBlob.DoesNotExist:
             return Response({"error": "attachment not found"}, status=status.HTTP_404_NOT_FOUND)
         return Response(
             {

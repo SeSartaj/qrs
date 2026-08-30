@@ -50,7 +50,7 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DocumentSummary | null>(null);
-  const [pendingUploads, setPendingUploads] = useState(0);
+  const [pendingAttachments, setPendingAttachments] = useState<Record<string, number>>({});
   const [attesting, setAttesting] = useState(false);
   const [selectedAttestationTarget, setSelectedAttestationTarget] = useState<string | null>(null);
   const [certTab, setCertTab] = useState('sdocs');
@@ -60,16 +60,22 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
   const [pendingBlock, setPendingBlock] = useState<{ sdocId: string; action: 'block' | 'unblock' } | null>(null);
 
   const reload = useCallback(async () => {
-    const [tRes, dRes, pRes, trustRes, revocationRes, configRes] = await Promise.all([
+    const [tRes, dRes, trustRes, revocationRes, configRes] = await Promise.all([
       safe(qrs().certificates.list()),
       safe(qrs().documents.list()),
-      safe(qrs().attachments.pending()),
       safe(qrs().trust.state()), safe(qrs().revocation.state()),
       safe(qrs().config.get()),
     ]);
-    if (tRes.ok) { setKnownTcerts(tRes.value); setTcerts(tRes.value.filter((c) => c.own)); } // sign with our own certs only
+    if (tRes.ok) {
+      setKnownTcerts(tRes.value);
+      setTcerts(tRes.value.filter((c) => c.own)); // sign with our own certs only
+      const counts = await Promise.all(tRes.value.map(async (cert) => {
+        const result = await safe(qrs().attachments.pendingForTcert(cert.tcertId));
+        return result.ok ? [cert.tcertId, result.value] as const : null;
+      }));
+      setPendingAttachments(Object.fromEntries(counts.filter((entry): entry is readonly [string, number] => entry !== null)));
+    }
     if (dRes.ok) setDocs(dRes.value);
-    if (pRes.ok) setPendingUploads(pRes.value);
     if (trustRes.ok) setTrustState(trustRes.value);
     if (revocationRes.ok) setRevocationState(revocationRes.value);
     if (configRes.ok) setArchivedTcerts(configRes.value.archivedTcerts ?? []);
@@ -164,7 +170,6 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
       showNotice('error', 'Sync failed — see the red alert above for details');
       return;
     }
-    setPendingUploads(res.value.pending);
     if (res.value.errors.length > 0) {
       // Show every message so the user can read/debug them.
       setError(`Sync finished with ${res.value.errors.length} error(s):\n\n${res.value.errors.join('\n')}`);
@@ -188,7 +193,7 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
     void reload();
   };
 
-  /** Sync one CA namespace only. */
+  /** Sync the selected TCert's distribution namespace. */
   const syncCert = async (tcertId: string): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -366,7 +371,7 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
             <Typography variant="h5">{selectedTcert.name}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {selectedTcert.isCa && (
+            {(selectedTcert.endpoints?.length ?? 0) > 0 && (
               <Button
                 variant="outlined"
                 size="small"
@@ -374,7 +379,7 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
                 onClick={() => void syncCert(selectedTcert.tcertId)}
                 disabled={busy}
               >
-                Sync CA
+                Sync
               </Button>
             )}
             {selectedTcert.hasSchema && (
@@ -396,9 +401,9 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
             {error}
           </Alert>
         )}
-        {pendingUploads > 0 && (
-          <Alert severity="info" sx={{ mb: 2 }} onClose={() => setPendingUploads(0)}>
-            {pendingUploads} attachment upload(s) waiting — they will sync automatically when the network is available.
+        {(pendingAttachments[selectedTcert.tcertId] ?? 0) > 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {pendingAttachments[selectedTcert.tcertId]} attachment upload(s) waiting for this TCert — they will sync automatically when the network is available.
           </Alert>
         )}
         {result && (
@@ -441,6 +446,12 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
               </Box>
               <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
                 <Chip label={`${selectedDocs.length} ${t('documents.docs').toLowerCase()}`} size="small" />
+                <Chip
+                  label={`${pendingAttachments[selectedTcert.tcertId] ?? 0} pending attachment upload${pendingAttachments[selectedTcert.tcertId] === 1 ? '' : 's'}`}
+                  size="small"
+                  color={(pendingAttachments[selectedTcert.tcertId] ?? 0) > 0 ? 'warning' : 'default'}
+                  sx={{ ml: 1 }}
+                />
                 <Button
                   size="small"
                   color={selectedTcert.isCa ? 'secondary' : 'primary'}
@@ -543,12 +554,6 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
           {error}
         </Alert>
       )}
-      {pendingUploads > 0 && (
-        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setPendingUploads(0)}>
-          {pendingUploads} attachment upload(s) waiting — they will sync automatically when the network is available.
-        </Alert>
-      )}
-
       {tcerts.length === 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('documents.noCertsYet')} {t('documents.createCertInSettings')}
@@ -572,7 +577,14 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
                   {cert.revoked && <Chip size="small" color="error" label="Revoked" />}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Chip size="small" color={cert.revoked ? 'error' : 'primary'} variant="outlined" label={cert.revoked ? 'Revoked' : `${docCountFor(cert.tcertId)} ${t('documents.docs').toLowerCase()}`} />
+                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                    <Chip size="small" color={cert.revoked ? 'error' : 'primary'} variant="outlined" label={cert.revoked ? 'Revoked' : `${docCountFor(cert.tcertId)} ${t('documents.docs').toLowerCase()}`} />
+                    <Chip
+                      size="small"
+                      color={(pendingAttachments[cert.tcertId] ?? 0) > 0 ? 'warning' : 'default'}
+                      label={`${pendingAttachments[cert.tcertId] ?? 0} pending upload${pendingAttachments[cert.tcertId] === 1 ? '' : 's'}`}
+                    />
+                  </Box>
                   <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
                     {shortId(cert.tcertId)}
                   </Typography>

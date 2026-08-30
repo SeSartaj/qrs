@@ -86,6 +86,13 @@ compares it with the signed SDoc value. Required attachments are part of the
 document verification decision; optional attachments are checked only when the
 verifier downloads or opens them.
 
+The server separates each physical content-addressed file (`AttachmentBlob`)
+from the per-TCert logical reference (`AttachmentReference`). Identical files
+uploaded under multiple TCerts are stored once and linked to each TCert
+independently. The blob uses Django's `FileField` storage interface, so the
+storage backend can later be switched to an S3-compatible service such as
+RustFS without changing the attachment API.
+
 ## Proof-of-work details
 
 - `difficulty` default 4 (≈16 bits of work); range 1–8. Tokens expire after 10

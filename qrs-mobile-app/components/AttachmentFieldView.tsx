@@ -3,14 +3,13 @@
  *
  * OFFLINE-FIRST: never auto-downloads. Loads file metadata (contentType + size)
  * from the issuing cert's distribution mirrors, shows it, and previews small
- * images automatically. Other files are fetched when the user taps
- * Download/Open. On native the saved path is shown so the file is easy to find;
- * on web it triggers a browser download.
+ * images automatically. Other files are fetched when the user taps Open.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { getQrs } from '../lib/runtime';
 import {
   fetchAttachmentMetadata,
@@ -93,10 +92,12 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
     if (previewableImage) void loadContent();
   }, [loadContent, previewableImage]);
 
-  const save = async (): Promise<string | null> => {
+  /** Create a shareable private file URI for native Open actions. */
+  const savePrivateCopy = async (): Promise<string | null> => {
     const uri = await loadContent();
-    if (!uri || Platform.OS === 'web') return uri;
-    const path = `${FileSystem.documentDirectory ?? ''}${id}.${extFor(contentType)}`;
+    if (!uri) return null;
+    if (Platform.OS === 'web') return uri;
+    const path = `${FileSystem.documentDirectory ?? ''}${id}.${extFor(displayContentType)}`;
     const b64 = uri.split(',')[1] ?? '';
     await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
     setSavedPath(path);
@@ -104,7 +105,7 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
   };
 
   const open = async (): Promise<void> => {
-    const uri = savedPath ? `file://${savedPath.replace(/^file:\/\//, '')}` : await save();
+    const uri = savedPath ?? await savePrivateCopy();
     if (!uri) {
       Alert.alert('Open failed', 'Attachment unavailable (offline or not found on the server)');
       return;
@@ -134,8 +135,14 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
         }
         return;
       }
-      const contentUri = Platform.OS === 'android' ? await FileSystem.getContentUriAsync(savedPath ?? uri) : savedPath ?? uri;
-      await Linking.openURL(contentUri);
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Open failed', 'No app is available to open or share this file');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: displayContentType,
+        dialogTitle: `Open ${id}.${extFor(displayContentType)}`,
+      });
     } catch (e) {
       Alert.alert('Open failed', e instanceof Error ? e.message : String(e));
     }
@@ -155,7 +162,6 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
             {displayContentType} · {fmtSize(size)}
           </Text>
           {loadingContent ? <ActivityIndicator accessibilityLabel="Loading attachment" /> : null}
-          <Button compact icon="download" disabled={loadingContent} onPress={() => void save()}>{'Download'}</Button>
           <Button compact icon="open-in-new" disabled={loadingContent} onPress={() => void open()}>{'Open'}</Button>
         </View>
       )}

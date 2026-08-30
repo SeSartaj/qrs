@@ -21,8 +21,9 @@ class SupportedTcert(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # --- New online-server spec (2026-08-25) ---
-    # A TCert the server admin has explicitly trusted and added as a CA. Only CAs
-    # and the TCerts they attest may use the server's services.
+    # A TCert the server admin has explicitly trusted and added as a CA. CA-only
+    # services require this flag; attachment upload only requires registration
+    # plus its own permission flag.
     is_ca = models.BooleanField(default=False)
     # Server-admin capability policy. CA-only capabilities are also gated by
     # is_ca in the API, so these flags can safely be enabled by default.
@@ -117,24 +118,44 @@ class SignedObject(models.Model):
         return f"{self.action} {self.statement_id}"
 
 
-class Attachment(models.Model):
-    """A raw file stored by its content-addressed hash.
+class AttachmentBlob(models.Model):
+    """One physical content-addressed file.
 
-    The SDoc stores only the truncated hash for an attachment field. The server
-    stores a normal uploaded file keyed by that hash; it never stores a signed
-    attachment object or base64 payload.
+    FileField delegates persistence to Django's storage backend, so this model
+    can later use S3-compatible storage such as RustFS without API changes.
     """
 
     id = models.CharField(max_length=32, primary_key=True)  # first 128 bits of SHA-256
-    tcert = models.ForeignKey(
-        SupportedTcert, on_delete=models.SET_NULL, null=True, blank=True, related_name="attachments"
-    )
-    key_id = models.CharField(max_length=64, db_index=True, blank=True)
     content_type = models.CharField(max_length=128, default="application/octet-stream")
     content_hash = models.CharField(max_length=64, blank=True)  # full hash hex
     size = models.BigIntegerField(default=0)  # file size in bytes
-    file = models.FileField(upload_to="attachments/")
+    file = models.FileField(upload_to="attachments/blobs/")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"attachment {self.id}"
+        return f"attachment blob {self.id}"
+
+
+class AttachmentReference(models.Model):
+    """A TCert's logical use of an attachment blob."""
+
+    tcert = models.ForeignKey(SupportedTcert, on_delete=models.CASCADE, related_name="attachments")
+    blob = models.ForeignKey(AttachmentBlob, on_delete=models.CASCADE, related_name="references")
+    field_name = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tcert", "blob", "field_name"],
+                name="unique_attachment_reference_per_field",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.tcert.tcert_id} attachment {self.blob_id} ({self.field_name})"
+
+
+# Compatibility alias for existing management scripts. New code should use the
+# explicit AttachmentBlob or AttachmentReference names.
+Attachment = AttachmentBlob

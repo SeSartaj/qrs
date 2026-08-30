@@ -1,6 +1,6 @@
 /**
- * CA-scoped distribution sync. There is deliberately no global sync: every
- * operation is rooted in one locally configured CA and one of its endpoints.
+ * TCert-scoped distribution sync. There is deliberately no global sync: every
+ * operation is rooted in one locally configured TCert and one of its endpoints.
  */
 import { fromBase64Url, parseSignedObject, toBase64Url } from 'qrs-core';
 import type { SyncResult } from '../shared/types.js';
@@ -30,26 +30,28 @@ export async function syncAll(_rt: DesktopRuntime, _online: OnlineService = getO
     pending: 0,
     downloaded: 0,
     applied: 0,
-    errors: ['Global sync is disabled. Open and sync one trusted CA instead.'],
+    errors: ['Global sync is disabled. Open and sync one TCert with a distribution endpoint instead.'],
   };
 }
 
-/** Sync exactly one local CA: push its enrollments/statements, then pull its namespace. */
+/**
+ * Sync exactly one local TCert: flush pending uploads, then pull its hosted
+ * statements. CAs use the CA endpoint because it also includes enrolled
+ * targets; ordinary TCerts use the public key namespace endpoint.
+ */
 export async function syncTcert(
   rt: DesktopRuntime,
-  caTcertId: string,
+  tcertId: string,
   online: OnlineService = getOnlineService()
 ): Promise<SyncResult> {
-  if (!(await rt.qrs.deps.trustStore.isCa(caTcertId))) {
-    return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: ['Only a locally configured CA can be synced.'] };
-  }
-  const caBytes = await rt.qrs.deps.certificateStore.get(caTcertId);
-  if (!caBytes) return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: [`TCert not found: ${caTcertId}`] };
-  const ca = parseSignedObject(caBytes);
-  if (ca.type !== 'tcert') return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: [`not a TCert: ${caTcertId}`] };
-  const endpoints = await rt.qrs.endpoints.effectiveEndpoints(caTcertId);
+  const tcertBytes = await rt.qrs.deps.certificateStore.get(tcertId);
+  if (!tcertBytes) return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: [`TCert not found: ${tcertId}`] };
+  const tcert = parseSignedObject(tcertBytes);
+  if (tcert.type !== 'tcert') return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: [`not a TCert: ${tcertId}`] };
+  const isCa = await rt.qrs.deps.trustStore.isCa(tcertId);
+  const endpoints = await rt.qrs.endpoints.effectiveEndpoints(tcertId);
   if (endpoints.length === 0) {
-    return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: ['no endpoints configured on this CA'] };
+    return { uploaded: 0, pending: online.pendingCount(), downloaded: 0, applied: 0, errors: ['no distribution endpoints configured on this TCert'] };
   }
 
   let uploaded = 0;
@@ -58,19 +60,59 @@ export async function syncTcert(
   const errors: string[] = [];
   for (const endpoint of endpoints) {
     const base = baseUrl(endpoint);
-    const enroll = await uploadCaEnrollments(rt, online, caTcertId, ca.signerKeyId, base);
-    uploaded += enroll.uploaded;
-    errors.push(...enroll.errors);
+    if (isCa) {
+      const enroll = await uploadCaEnrollments(rt, online, tcertId, tcert.signerKeyId, base);
+      uploaded += enroll.uploaded;
+      errors.push(...enroll.errors);
+    }
 
-    const pending = await online.uploadPending(base, caTcertId);
+    const pending = await online.uploadPending(base, tcertId);
     uploaded += pending.uploaded;
 
-    const pulled = await pullCa(rt, base, caTcertId);
+    const pulled = await (isCa ? pullCa(rt, base, tcertId) : pullTcert(rt, base, tcert.signerKeyId));
     downloaded += pulled.downloaded;
     applied += pulled.applied;
     errors.push(...pulled.errors);
   }
   return { uploaded, pending: online.pendingCount(), downloaded, applied, errors };
+}
+
+/** Pull statements hosted in a non-CA TCert's public key namespace. */
+async function pullTcert(
+  rt: DesktopRuntime,
+  endpoint: string,
+  keyId: string
+): Promise<{ downloaded: number; applied: number; errors: string[] }> {
+  const errors: string[] = [];
+  let downloaded = 0;
+  let applied = 0;
+  try {
+    const res = await fetch(`${endpoint}/api/tcerts/${encodeURIComponent(keyId)}/objects/`);
+    if (!res.ok) {
+      return {
+        downloaded,
+        applied,
+        errors: [res.status === 404
+          ? `sync ${endpoint}: TCert is not registered or admitted on this distribution server (HTTP 404)`
+          : `sync ${endpoint}: HTTP ${res.status}`],
+      };
+    }
+    const payload = (await res.json()) as { objects?: ServerObject[] };
+    for (const object of payload.objects ?? []) {
+      if (object.type !== 'statement' || !object.bytesB64) continue;
+      try {
+        const result = await rt.qrs.online.importStatement(fromBase64Url(object.bytesB64));
+        downloaded++;
+        if (result.applied) applied++;
+        else if (result.reason) errors.push(`statement ${object.statementId ?? object.id}: ${result.reason}`);
+      } catch (error) {
+        errors.push(`apply statement ${object.statementId ?? object.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`sync ${endpoint}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return { downloaded, applied, errors };
 }
 
 async function uploadCaEnrollments(

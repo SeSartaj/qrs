@@ -490,6 +490,9 @@ export function registerIpc(rt: DesktopRuntime): void {
   ipcMain.handle(IPC.attachments.pending, async (): Promise<number> => {
     return online.pendingCount();
   });
+  ipcMain.handle(IPC.attachments.pendingForTcert, async (_e, tcertId: string): Promise<number> => {
+    return online.pendingAttachmentCount(tcertId);
+  });
   ipcMain.handle(IPC.attachments.get, async (_e, input: AttachmentGetInput): Promise<AttachmentData | null> => {
     const att = await fetchRawAttachment(
       input.id,

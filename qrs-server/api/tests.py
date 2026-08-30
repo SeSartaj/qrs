@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from . import proof_of_work
-from .models import Attachment, SupportedTcert, TcertToken
+from .models import Attachment, AttachmentReference, SupportedTcert, TcertToken
 
 BASE = Path(__file__).resolve().parent.parent
 NODE = shutil.which("node") or "node"
@@ -130,6 +130,26 @@ class ApiFlowTest(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(r.json()["id"], att_id)
 
+        # The same content may be referenced by another TCert without creating
+        # a second physical blob.
+        second_tcert = SupportedTcert.objects.create(
+            key_id=fx["tcertId"].split(":")[0], certificate_number=2, tcert_id=f'{fx["tcertId"].split(":")[0]}:2',
+            algorithm="Ed25519", name="Second license", public_key={}, online_endpoint="",
+            tcert_b64=fx["tcertB64"],
+        )
+        r = c.post(
+            "/api/attachments/",
+            {
+                "tcertId": second_tcert.tcert_id,
+                "fieldName": "photo",
+                "file": SimpleUploadedFile("photo.png", raw_attachment, content_type="image/png"),
+            },
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Attachment.objects.filter(id=att_id).count(), 1)
+        self.assertEqual(AttachmentReference.objects.filter(blob_id=att_id).count(), 2)
+
         # Metadata-only GET (no body) — lets the verifier show size without downloading.
         r = c.get(f"/api/attachments/{att_id}/")
         self.assertEqual(r.status_code, 200, r.content)
@@ -212,9 +232,8 @@ class ApiFlowTest(TestCase):
         r = c.post("/api/tcerts/abc/challenge/", {}, format="json")
         self.assertEqual(r.status_code, 200)  # challenges are not scoped to a registered TCert
 
-    def test_non_ca_tcert_cannot_upload(self):
-        """New spec: a TCert that is neither a trusted CA nor attested by one
-        cannot upload statements or attachments."""
+    def test_non_ca_tcert_can_upload_attachment_when_enabled(self):
+        """Attachment upload needs registration + permission, not CA attestation."""
         c = self.client
         fx = self.fx
 
@@ -248,7 +267,7 @@ class ApiFlowTest(TestCase):
         )
         self.assertEqual(r.status_code, 404, r.content)  # not a trusted CA
 
-        # Attachment upload is forbidden too (not attested).
+        # Attachment upload is allowed for a registered non-CA TCert.
         r = c.post(
             "/api/attachments/",
             {
@@ -258,7 +277,7 @@ class ApiFlowTest(TestCase):
             },
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.status_code, 201, r.content)
 
     def test_independent_cas_attest_same_target(self):
         """Two independent trusted CAs may both attest the same target TCert.

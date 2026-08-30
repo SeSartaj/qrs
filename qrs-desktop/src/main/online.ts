@@ -290,6 +290,11 @@ export class OnlineService {
     return this.pending.length;
   }
 
+  /** Number of queued attachment uploads belonging to one issuing TCert. */
+  pendingAttachmentCount(tcertId: string): number {
+    return this.pending.filter((entry) => entry.kind === 'attachment' && entry.tcertId === tcertId).length;
+  }
+
   /** Snapshot of the objects currently waiting to reach their distribution server. */
   listQueue(): Array<{ keyId: string; onlineEndpoint: string; kind: ObjectKind; id: string }> {
     return this.pending.map((e) => ({ ...e }));
