@@ -13,25 +13,25 @@ It never guesses the meaning of a payload from its content.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .cbor import cbor_decode, cbor_encode
-from .constants import PROTOCOL_VERSION
+from .constants import COSE_HDR_TCERT_NUMBER, PROTOCOL_VERSION
 from .cose import CoseSign1, decode_cose_sign1, sign_cose_sign1, verify_cose_sign1
-from .crypto.providers import (
-    ICryptoProvider,
-    KeyPairMaterial,
-    algorithm_from_cose_algorithm,
-)
+from .crypto.providers import algorithm_from_cose_algorithm
 from .errors import QrsParseError, QrsUnsupportedError
 from .id import from_hex, hash_for, is_hash_algorithm, to_hex, trunc_sha256
 from .signed_object import assert_valid_object_data, is_signed_object_type
+
+if TYPE_CHECKING:
+    from .crypto.providers import ICryptoProvider, KeyPairMaterial
 
 __all__ = [
     "ParsedSignedObject",
     "build_signed_object",
     "parse_signed_object",
     "verify_parsed_signed_object",
+    "tcert_number_of",
     "tcert_id_of",
     "sdoc_id_of",
     "tcert_hash_of",
@@ -61,12 +61,17 @@ def build_signed_object(
     key_pair: KeyPairMaterial,
     provider: ICryptoProvider,
     external_aad: bytes = b"",
+    tcert_number: int | None = None,
 ) -> bytes:
-    """Build the bytes of a signed object of the given type."""
+    """Build the bytes of a signed object of the given type.
+
+    ``tcert_number`` is an optional TCert certificate number carried as a
+    COSE protected header (mirrors the reference implementation).
+    """
     data_bytes = cbor_encode(data)
     payload = cbor_encode([PROTOCOL_VERSION, obj_type, data_bytes])
     return sign_cose_sign1(
-        payload, provider.key_id(key_pair.public_jwk), key_pair, provider, external_aad
+        payload, provider.key_id(key_pair.public_jwk), key_pair, provider, external_aad, tcert_number
     ).bytes
 
 
@@ -118,6 +123,16 @@ def verify_parsed_signed_object(
     return verify_cose_sign1(parsed.cose, provider, public_jwk, external_aad)
 
 
+def tcert_number_of(parsed: ParsedSignedObject) -> int:
+    """Read the authenticated TCert number from a TCert or SDoc protected header."""
+    value = parsed.cose.protected_headers.get(COSE_HDR_TCERT_NUMBER)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1 or value > 255:
+        raise QrsParseError(
+            f"Signed {parsed.type} has no valid protected TCert number (header {COSE_HDR_TCERT_NUMBER})"
+        )
+    return value
+
+
 def tcert_id_of(key_id: str, certificate_number: int) -> str:
     """TCert id: ``<keyId>:<certificateNumber>``."""
     return f"{key_id}:{certificate_number}"
@@ -155,6 +170,3 @@ def split_tcert_id(tcert_id: str) -> tuple[str, int]:
 def key_id_to_bytes(key_id: str) -> bytes:
     """Convenience: key bytes as hex (for TCert data fields)."""
     return from_hex(key_id)
-
-
-assert KeyPairMaterial  # unused import guard (typing only)

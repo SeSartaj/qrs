@@ -15,12 +15,15 @@ while still being covered by the signature (see the secretInput field engine).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .cbor import cbor_decode, cbor_encode
-from .constants import COSE_HDR_ALG, COSE_HDR_KID
+from .constants import COSE_HDR_ALG, COSE_HDR_KID, COSE_HDR_TCERT_NUMBER
 from .errors import QrsParseError, QrsUnsupportedError
 from .id import from_hex
+
+if TYPE_CHECKING:
+    from .crypto.providers import ICryptoProvider, KeyPairMaterial
 
 __all__ = [
     "CoseSign1",
@@ -56,26 +59,44 @@ def sign_cose_sign1(
     key_pair: "KeyPairMaterial",
     provider: "ICryptoProvider",
     external_aad: bytes = b"",
+    tcert_number: int | None = None,
 ) -> SignedCose:
     """Sign a payload into a COSE_Sign1 message.
 
     ``external_aad`` is additional authenticated bytes (e.g. secrets),
     NOT stored in the message.
+
+    ``tcert_number`` is an optional public header carrying the TCert
+    certificate number (1..255), mirroring the reference implementation's
+    ``tcertNumber`` protected header.
     """
-    protected_bytes = cbor_encode(
-        {
-            COSE_HDR_ALG: provider.cose_algorithm_id,
-            COSE_HDR_KID: from_hex(key_id),
-        }
-    )
+    if tcert_number is not None and (
+        not isinstance(tcert_number, int) or isinstance(tcert_number, bool) or tcert_number < 1 or tcert_number > 255
+    ):
+        raise QrsParseError("TCert number must be an integer in the range 1..255")
+    protected = {
+        COSE_HDR_ALG: provider.cose_algorithm_id,
+        COSE_HDR_KID: from_hex(key_id),
+    }
+    if tcert_number is not None:
+        protected[COSE_HDR_TCERT_NUMBER] = tcert_number
+    protected_bytes = cbor_encode(protected)
     unprotected_bytes = cbor_encode({})
 
     sig_structure = cbor_encode([_CONTEXT, protected_bytes, external_aad, payload])
+    if key_pair.private_jwk is None:
+        raise QrsParseError("Cannot sign without a private key")
     signature = provider.sign(sig_structure, key_pair.private_jwk)
 
+    headers: dict[int, Any] = {
+        COSE_HDR_ALG: provider.cose_algorithm_id,
+        COSE_HDR_KID: from_hex(key_id),
+    }
+    if tcert_number is not None:
+        headers[COSE_HDR_TCERT_NUMBER] = tcert_number
     cose = CoseSign1(
         protected_bytes=protected_bytes,
-        protected_headers={COSE_HDR_ALG: provider.cose_algorithm_id, COSE_HDR_KID: from_hex(key_id)},
+        protected_headers=headers,
         unprotected_bytes=unprotected_bytes,
         payload=payload,
         signature=signature,
@@ -99,14 +120,22 @@ def decode_cose_sign1(data: bytes) -> CoseSign1:
         raise QrsParseError("COSE_Sign1 protected headers must be a map")
     alg = headers.get(COSE_HDR_ALG)
     kid = headers.get(COSE_HDR_KID)
+    tcert_number = headers.get(COSE_HDR_TCERT_NUMBER)
     if not isinstance(alg, int):
         raise QrsParseError("COSE_Sign1 protected headers must contain an algorithm")
     if not isinstance(kid, bytes):
         raise QrsParseError("COSE_Sign1 protected headers must contain a key id")
+    if tcert_number is not None and (
+        not isinstance(tcert_number, int) or isinstance(tcert_number, bool) or tcert_number < 1 or tcert_number > 255
+    ):
+        raise QrsParseError("COSE_Sign1 protected TCert number must be an integer in the range 1..255")
 
+    protected_headers = {COSE_HDR_ALG: alg, COSE_HDR_KID: kid}
+    if tcert_number is not None:
+        protected_headers[COSE_HDR_TCERT_NUMBER] = tcert_number
     return CoseSign1(
         protected_bytes=protected_bytes,
-        protected_headers={COSE_HDR_ALG: alg, COSE_HDR_KID: kid},
+        protected_headers=protected_headers,
         unprotected_bytes=unprotected_bytes,
         payload=payload,
         signature=signature,
@@ -134,9 +163,3 @@ def assert_supported_algorithm(alg: int) -> None:
     """Only algorithm identifiers this profile understands may be used."""
     if alg != -8 and alg != -7:
         raise QrsUnsupportedError(f"Unsupported COSE algorithm identifier: {alg}")
-
-
-# Type-only re-exports to keep the public API self-contained.
-from .crypto.providers import ICryptoProvider, KeyPairMaterial  # noqa: E402
-
-assert KeyPairMaterial  # noqa: B018 - re-export marker

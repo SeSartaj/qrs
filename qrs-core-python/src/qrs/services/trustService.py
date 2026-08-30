@@ -36,7 +36,7 @@ __all__ = ["TrustService", "TrustResolution", "AttestParams", "AddTcertParams"]
 class TrustResolution:
     state: str  # 'valid' | 'invalid' | 'cannotVerify'
     pinned: bool = False
-    ca: dict[str, str] | None = None
+    ca: dict[str, str | None] | None = None
     message: str | None = None
 
 
@@ -152,7 +152,7 @@ class TrustService:
             return TrustResolution(state="invalid", pinned=False, message="TCert is locally distrusted")
         pinned = await self._deps.trust_store.is_pinned(tcert_id)
         attestations = await self._deps.trust_store.get_attestations(tcert_id)
-        ca: dict[str, str] | None = None
+        ca: dict[str, str | None] | None = None
         for att in attestations:
             if await self._is_valid_attestation(att):
                 ca = {

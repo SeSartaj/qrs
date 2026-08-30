@@ -19,6 +19,7 @@ from .constants import MICRODEGREES
 from .date_rules import DateRuleInput, evaluate_date_expressions
 from .errors import QrsValidationError
 from .fields import (
+    ContextRequirement,
     FieldInputError,
     FieldResult,
     FieldSchema,
@@ -83,7 +84,7 @@ class TextField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -123,7 +124,7 @@ class TextareaField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -158,7 +159,7 @@ class SelectField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -214,7 +215,7 @@ class SelectV2Field(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -270,7 +271,7 @@ class NumberField(IFieldEngine):
                 return encoded
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -312,7 +313,7 @@ class DateField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -351,9 +352,8 @@ def is_valid_utc_datetime(value: str) -> bool:
     if not m:
         return False
     try:
-        datetime(
-            *(int(g) for g in m.groups()), tzinfo=timezone.utc
-        )
+        year, month, day, hour, minute, second = (int(g) for g in m.groups())
+        datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
         return True
     except ValueError:
         return False
@@ -375,7 +375,7 @@ class DateTimeField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -387,7 +387,8 @@ class DateTimeField(IFieldEngine):
             m = _DATETIME_RE.match(str(encoded))
             if not m:
                 return FieldResult(name=field.name, state="invalid", message="malformed datetime value", label=field.label)
-            dt = datetime(*(int(g) for g in m.groups()), tzinfo=timezone.utc)
+            year, month, day, hour, minute, second = (int(g) for g in m.groups())
+            dt = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
             result = evaluate_date_expressions(
                 expressions,
                 DateRuleInput(
@@ -426,7 +427,7 @@ class DatetimeEpochField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -492,7 +493,7 @@ class LocationField(IFieldEngine):
             raise QrsValidationError("Stored location must contain integer microdegree lat/lon")
         return {"lat": encoded["lat"] / MICRODEGREES, "lon": encoded["lon"] / MICRODEGREES}
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return ["location"]
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:
@@ -533,7 +534,7 @@ class SecretInputField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return ["secret"]
 
     def is_stripped(self, field: FieldSchema) -> bool:
@@ -591,7 +592,7 @@ class AttachmentField(IFieldEngine):
     def decode(self, field: FieldSchema, encoded: Any) -> Any:
         return encoded
 
-    def get_context_requirements(self, field: FieldSchema) -> list[str]:
+    def get_context_requirements(self, field: FieldSchema) -> list[ContextRequirement]:
         return []
 
     async def validate_field(self, field: FieldSchema, encoded: Any, ctx: VerificationContext) -> FieldResult:

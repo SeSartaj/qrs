@@ -59,6 +59,8 @@ class CertificateService:
         provider = self._deps.crypto_registry.get(algorithm)
         pair = provider.generate_key_pair()
         key_id = provider.key_id(pair.public_jwk)
+        if pair.private_jwk is None:
+            raise QrsCryptoError("Key generation did not produce a private key")
         await self._deps.private_key_store.save(key_id, algorithm, pair.private_jwk)
         await self._deps.public_key_store.save(key_id, algorithm, pair.public_jwk)
         return key_id

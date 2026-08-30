@@ -74,10 +74,12 @@ COSE_ALG_ES256 = -7  # ECDSA-P256
 # COSE header labels (RFC 9052 §3).
 COSE_HDR_ALG = 1
 COSE_HDR_KID = 4
+# Protocol-private protected header: the TCert certificate number (1..255).
+COSE_HDR_TCERT_NUMBER = -70001
 
 # Transfer envelope scheme/version (QR medium between devices).
 TRANSFER_SCHEME = "qrs"
-TRANSFER_VERSION = 1
+TRANSFER_VERSION = "v1"
 QRS_FILE_EXTENSION = "qrs"
 
 __all__ = [
@@ -96,6 +98,7 @@ __all__ = [
     "COSE_ALG_ES256",
     "COSE_HDR_ALG",
     "COSE_HDR_KID",
+    "COSE_HDR_TCERT_NUMBER",
     "TRANSFER_SCHEME",
     "TRANSFER_VERSION",
     "QRS_FILE_EXTENSION",

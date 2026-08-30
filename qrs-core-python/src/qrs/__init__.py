@@ -33,6 +33,7 @@ from .constants import (
     COSE_ALG_ES256,
     COSE_HDR_ALG,
     COSE_HDR_KID,
+    COSE_HDR_TCERT_NUMBER,
     FIELD_TYPES,
     HASH_ALGORITHMS,
     ID_BYTES,
@@ -71,6 +72,9 @@ from .id import (
 )
 from .runtime import QrsDependencies, QrsRuntime, create_qrs
 
+# Wire-format modules (mirror the reference implementation's public API).
+from . import cbor, cose, envelope, transfer  # noqa: E402
+
 __all__ = [
     # version / protocol constants
     "__version__",
@@ -88,9 +92,15 @@ __all__ = [
     "COSE_ALG_ES256",
     "COSE_HDR_ALG",
     "COSE_HDR_KID",
+    "COSE_HDR_TCERT_NUMBER",
     "TRANSFER_SCHEME",
     "TRANSFER_VERSION",
     "QRS_FILE_EXTENSION",
+    # wire-format modules
+    "cbor",
+    "cose",
+    "envelope",
+    "transfer",
     # errors
     "QrsError",
     "QrsParseError",

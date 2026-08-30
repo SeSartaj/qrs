@@ -65,8 +65,9 @@ OBJECT_DATA_SCHEMAS: dict[str, ObjectDataSchema] = {
     ),
     "sdoc": ObjectDataSchema(
         fields={
-            "tcertKeyId": DataFieldSpec(kind="bytes", required=True),
-            "tcertNumber": DataFieldSpec(kind="int", required=True),
+            # The TCert linkage (keyId + certificate number) is carried in the
+            # COSE protected headers (kid + tcertNumber), NOT in the data — this
+            # matches the reference implementation and keeps the SDoc minimal.
             "issuedAt": DataFieldSpec(kind="int", required=True),
             # Values are stored as a schema-indexed array (no field names/labels).
             "fields": DataFieldSpec(kind="array", required=True),

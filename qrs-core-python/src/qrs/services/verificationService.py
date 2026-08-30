@@ -22,7 +22,13 @@ from typing import Any
 
 from ..cbor import cbor_encode
 from ..deps import ServiceDeps
-from ..envelope import parse_signed_object, sdoc_id_of, tcert_id_of, verify_parsed_signed_object
+from ..envelope import (
+    parse_signed_object,
+    sdoc_id_of,
+    tcert_id_of,
+    tcert_number_of,
+    verify_parsed_signed_object,
+)
 from ..errors import QrsValidationError
 from ..fields import (
     FieldResult,
@@ -110,14 +116,13 @@ class VerificationService:
         result.sdoc_id = sdoc_id_of(data)
 
         # ---------- TCert ----------
+        # The TCert linkage comes from the COSE protected headers: keyId from
+        # `kid`, certificate number from the protocol-private `tcertNumber`
+        # header. This matches the reference implementation.
+        key_id = parsed.signer_key_id
         try:
-            key_id = to_hex(parsed.data["tcertKeyId"])
-        except (KeyError, TypeError):
-            result.tcert = "invalid"
-            result.message = "SDoc has no valid tcertKeyId"
-            return self._finalize(result)
-        tcert_number = parsed.data.get("tcertNumber") if isinstance(parsed.data, dict) else None
-        if not isinstance(tcert_number, int):
+            tcert_number = tcert_number_of(parsed)
+        except Exception:
             result.tcert = "invalid"
             result.message = "SDoc has no valid tcertNumber"
             return self._finalize(result)

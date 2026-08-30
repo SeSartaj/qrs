@@ -110,9 +110,10 @@ class SigningService:
                 stored_values.append(engine.encode(field, value))
 
         issued_at = params.issued_at if params.issued_at is not None else self._deps.clock.now()
+        # The TCert linkage (keyId + certificate number) is carried in the COSE
+        # protected headers (kid + tcertNumber), NOT in the data — matching the
+        # reference implementation and keeping the SDoc minimal for QR transfer.
         sdoc_data: dict[str, Any] = {
-            "tcertKeyId": data["keyId"],
-            "tcertNumber": certificate_number,
             "issuedAt": issued_at,
             "fields": stored_values,
         }
@@ -127,7 +128,7 @@ class SigningService:
             public_jwk=public_jwk,
             private_jwk=priv_rec["private_jwk"],
         )
-        bytes_out = build_signed_object("sdoc", sdoc_data, key_pair, provider, external_aad)
+        bytes_out = build_signed_object("sdoc", sdoc_data, key_pair, provider, external_aad, certificate_number)
         sdoc_id = sdoc_id_of(bytes_out)
 
         await self._deps.document_store.save(sdoc_id, bytes_out)

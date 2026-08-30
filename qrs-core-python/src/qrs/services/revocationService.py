@@ -21,7 +21,7 @@ from ..envelope import parse_signed_object, split_tcert_id, tcert_id_of
 from ..errors import QrsAuthorizationError, QrsCryptoError, QrsNotFoundError
 from ..id import to_hex
 from .statement import StatementOptions, StatementTarget, build_statement, verify_statement
-from ..storage.interfaces import RevocationEntry
+from ..storage.interfaces import BlockEntry, RevocationEntry
 
 __all__ = [
     "RevocationService",
@@ -133,7 +133,7 @@ class RevocationService:
             StatementOptions(reason=params.reason),
         )
         await self._deps.revocation_store.add_blocked_sdoc(
-            params.target_sdoc_id, {"issued_at": issued_at, "reason": params.reason}
+            params.target_sdoc_id, BlockEntry(issued_at=issued_at, reason=params.reason)
         )
         return built
 

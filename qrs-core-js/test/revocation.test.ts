@@ -106,7 +106,7 @@ describe('revocation', () => {
     // Per-CA entries: exactly one revocation, by CA-A.
     const entries = await runtime.deps.revocationStore.getRevokedTcertEntries(target.tcertId);
     expect(entries).toHaveLength(1);
-    expect(entries[0].byKeyId).toBe(caA.keyId);
+    expect(entries[0]?.byKeyId).toBe(caA.keyId);
 
     // Trust still resolves (per-CA independence) — CA-A's revocation of the
     // target does not prevent the TCert from being trusted through the other
