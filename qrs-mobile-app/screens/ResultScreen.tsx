@@ -160,7 +160,7 @@ export function ResultScreen({ route, navigation }: Props) {
         </Appbar.Header>
         <View style={styles.loadingResult}>
           <Text variant="titleMedium">Verifying document…</Text>
-          <Text variant="bodyMedium">Downloading and checking required attachments.</Text>
+          <Text variant="bodyMedium">Checking required attachments. This will stop if the internet is unavailable.</Text>
         </View>
       </View>
     );

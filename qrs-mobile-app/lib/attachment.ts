@@ -9,6 +9,18 @@
 import { attachmentReference, verifyAttachmentReference, type AttachmentReference, type QrsRuntime } from 'qrs-core';
 import { baseUrl } from './sync';
 
+const ATTACHMENT_REQUEST_TIMEOUT_MS = 8_000;
+
+async function fetchWithTimeout(url: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ATTACHMENT_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export interface AttachmentMeta {
   id: string;
   contentType: string;
@@ -45,7 +57,7 @@ export async function fetchAttachmentMetadata(
   for (const ep of endpoints) {
     const url = `${baseUrl(ep)}/api/attachments/${reference}/`;
     try {
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) {
         opts?.onDiagnostic?.({ endpoint: ep, url, ok: false, status: res.status, detail: `HTTP ${res.status}` });
         continue;
@@ -94,7 +106,7 @@ export async function fetchAttachmentContent(
   for (const ep of endpoints) {
     const url = `${baseUrl(ep)}/api/attachments/${id}/?content=1`;
     try {
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) {
         opts?.onDiagnostic?.({ endpoint: ep, url, ok: false, status: res.status, detail: `HTTP ${res.status}` });
         continue;

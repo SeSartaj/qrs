@@ -193,7 +193,7 @@ export async function verifySdoc(raw: string): Promise<CleanVerifyResult> {
             state: corrupt ? 'invalid' : 'cannotVerify',
             message: corrupt
               ? 'Required attachment is corrupted (its hash does not match the signed SDoc)'
-              : endpoints.length > 0 ? 'Required attachment could not be downloaded or verified' : 'Required attachment has no available server',
+              : endpoints.length > 0 ? 'Internet not available; required attachment cannot be verified' : 'Required attachment has no available server',
           };
           break;
         }

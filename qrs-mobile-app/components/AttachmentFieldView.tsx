@@ -107,7 +107,7 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
   const open = async (): Promise<void> => {
     const uri = savedPath ?? await savePrivateCopy();
     if (!uri) {
-      Alert.alert('Open failed', 'Attachment unavailable (offline or not found on the server)');
+      Alert.alert('Open failed', 'Internet not available or attachment was not found on the server');
       return;
     }
     try {
@@ -152,7 +152,7 @@ export function AttachmentFieldView({ reference, contentType, tcertId }: Props) 
     <View style={styles.wrap}>
       {status === 'missing' && (
         <Text variant="bodySmall" style={{ opacity: 0.7 }}>
-          Attachment unavailable (offline or not found on the server)
+          Internet not available or attachment was not found on the server
         </Text>
       )}
       {status === 'error' && <Text variant="bodySmall">Attachment is corrupted; it cannot be opened.</Text>}
