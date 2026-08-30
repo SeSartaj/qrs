@@ -1,0 +1,137 @@
+# LaTeX auxiliary files
+*.aux
+*.log
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.pdf
+# ==========================================
+# Node.js / JavaScript
+# ==========================================
+# Dependencies
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build outputs and logs
+dist/
+build/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.lerna/
+
+# Frontend/Framework caches
+.next/
+.nuxt/
+.vuepress/
+.cache/
+.parcel-cache/
+
+# ==========================================
+# Python
+# ==========================================
+# Byte-compiled / optimized / DLL files
+*__pycache__
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+# The mobile app's TypeScript source lives in a directory named lib/.
+!src/qrs-mobile-app/lib/
+!src/qrs-mobile-app/lib/**
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing and coverage
+.pytest_cache/
+.htmlcov/
+htmlcov/
+.tox/
+.nosenv/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Documentation
+/site
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# MyPy and type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ==========================================
+# Environment Variables & Secrets (CRITICAL)
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+*.env
+config.json
+
+# ==========================================
+# Operating System & IDEs
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Ehthumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains (PyCharm, WebStorm)
+.idea/
+*.iml
