@@ -17,9 +17,8 @@ from typing import Any
 
 from ..crypto.providers import KeyPairMaterial
 from ..deps import ServiceDeps
-from ..envelope import parse_signed_object, split_tcert_id, tcert_id_of
+from ..envelope import parse_signed_object, split_tcert_id, tcert_id_of, tcert_number_of
 from ..errors import QrsAuthorizationError, QrsCryptoError, QrsNotFoundError
-from ..id import to_hex
 from .statement import StatementOptions, StatementTarget, build_statement, verify_statement
 from ..storage.interfaces import BlockEntry, RevocationEntry
 
@@ -117,8 +116,10 @@ class RevocationService:
         if not sdoc_bytes:
             raise QrsNotFoundError(f"SDoc not found: {params.target_sdoc_id}")
         parsed = parse_signed_object(sdoc_bytes)
-        tcert_key_id = to_hex(parsed.data["tcertKeyId"])
-        tcert_id = tcert_id_of(tcert_key_id, parsed.data["tcertNumber"])
+        # The TCert linkage lives in the COSE protected headers (kid + tcert
+        # number), NOT in the SDoc data — matching the reference implementation.
+        tcert_key_id = parsed.signer_key_id
+        tcert_id = tcert_id_of(tcert_key_id, tcert_number_of(parsed))
         authorized = params.signer_key_id == tcert_key_id or await self.is_authorized_ca(
             params.signer_key_id, tcert_id
         )
@@ -142,8 +143,9 @@ class RevocationService:
         if not sdoc_bytes:
             raise QrsNotFoundError(f"SDoc not found: {params.target_sdoc_id}")
         parsed = parse_signed_object(sdoc_bytes)
-        tcert_key_id = to_hex(parsed.data["tcertKeyId"])
-        tcert_id = tcert_id_of(tcert_key_id, parsed.data["tcertNumber"])
+        # TCert linkage from COSE protected headers (kid + tcert number).
+        tcert_key_id = parsed.signer_key_id
+        tcert_id = tcert_id_of(tcert_key_id, tcert_number_of(parsed))
         authorized = params.signer_key_id == tcert_key_id or await self.is_authorized_ca(
             params.signer_key_id, tcert_id
         )
