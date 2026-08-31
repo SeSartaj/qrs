@@ -68,7 +68,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "react-native-quick-crypto"
+      "react-native-quick-crypto",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": ["arm64-v8a", "armeabi-v7a"]
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
