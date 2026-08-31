@@ -179,6 +179,7 @@ export function ResultScreen({ route, navigation }: Props) {
   const cannotVerify = result.verdict === 'cannotVerify';
   const color = verdictColor(result.verdict, theme.dark);
   const finalLabel = result.certificateMissing ? 'CANNOT BE VERIFIED' : result.verdict.toUpperCase();
+  const hasAttestation = result.caViews.length > 0;
 
   const fieldsWithValidity = result.values.filter((v) => v.state !== undefined);
 
@@ -204,7 +205,7 @@ export function ResultScreen({ route, navigation }: Props) {
             <Text variant="titleMedium" style={[styles.fullName, { color: VERIFIED_BLUE }]}>
               {result.issuerName ?? result.caName}
             </Text>
-            {(result.caVerified || result.issuerPinned) ? <VerifiedBadge /> : null}
+            {result.caVerified && !result.issuerPinned ? <VerifiedBadge /> : null}
           </View>
         ) : null}
 
@@ -214,9 +215,11 @@ export function ResultScreen({ route, navigation }: Props) {
           </Text>
         ) : null}
 
-        {/* The TCert name; trust is represented by the CA badge above. */}
+        {/* A pinned TCert without an attestation is verified by the TCert itself;
+            attested TCerts show their verification badge with the CA above. */}
         <View style={styles.nameRow}>
           <Text variant="titleLarge" style={styles.fullName}>{result.documentName ?? 'Document'}</Text>
+          {result.issuerPinned && !hasAttestation ? <VerifiedBadge /> : null}
         </View>
         {result.issuedAt !== undefined ? <Text variant="bodySmall" style={styles.issuedAt}>{formatEpoch(result.issuedAt, dateFormat)}</Text> : null}
 

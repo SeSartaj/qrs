@@ -38,6 +38,7 @@ interface CertRow {
   trusted: boolean; // resolved trust state
   caName?: string;
   archived: boolean;
+  hasEndpoint: boolean;
 }
 
 function shortId(id: string): string {
@@ -64,11 +65,12 @@ async function listCerts(qrs: QrsRuntime): Promise<CertRow[]> {
     const data = parsed.data as unknown as {
       identity?: { name?: string };
     };
-    const [pinned, isCa, distrusted, trust] = await Promise.all([
+    const [pinned, isCa, distrusted, trust, endpoints] = await Promise.all([
       qrs.deps.trustStore.isPinned(rec.tcertId),
       qrs.deps.trustStore.isCa(rec.tcertId),
       qrs.deps.trustStore.isDistrusted(rec.tcertId),
       qrs.trust.resolveTrust(rec.tcertId),
+      qrs.endpoints.effectiveEndpoints(rec.tcertId),
     ]);
     rows.push({
       tcertId: rec.tcertId,
@@ -79,6 +81,7 @@ async function listCerts(qrs: QrsRuntime): Promise<CertRow[]> {
       trusted: trust.state === 'valid',
       caName: trust.ca?.caName,
       archived: archived.has(rec.tcertId),
+      hasEndpoint: endpoints.length > 0,
     });
   }
   rows.sort((a, b) => (a.trusted === b.trusted ? 0 : a.trusted ? -1 : 1));
@@ -116,7 +119,7 @@ export function TrustScreen() {
     }, [refresh])
   );
 
-  /** Pull the namespace of one locally configured CA. */
+  /** Pull the namespace of one local TCert with a distribution endpoint. */
   const doSync = async (tcertId: string): Promise<void> => {
     if (syncing) return;
     setSyncing(true);
@@ -252,7 +255,7 @@ export function TrustScreen() {
               title={
                 <View style={styles.nameRow}>
                   <Text variant="titleMedium" numberOfLines={1} ellipsizeMode="tail" style={styles.certName}>{truncateName(r.name)}</Text>
-                  {r.trusted ? <VerifiedBadge /> : null}
+                  {r.pinned && !r.caName ? <VerifiedBadge /> : null}
                 </View>
               }
               subtitle={shortId(r.tcertId)}
@@ -285,11 +288,11 @@ export function TrustScreen() {
                   <Text variant="bodySmall" style={{ color: VERIFIED_BLUE }}>
                     Verified by {r.caName}
                   </Text>
-                  {r.trusted ? <VerifiedBadge size={12} /> : null}
+                  {!r.pinned && r.caName ? <VerifiedBadge size={12} /> : null}
                 </View>
               ) : null}
               <View style={styles.actions}>
-                {r.isCa && (
+                {r.hasEndpoint && (
                   <Button
                     compact
                     icon="cloud-download"
@@ -300,7 +303,7 @@ export function TrustScreen() {
                       void doSync(r.tcertId);
                     }}
                   >
-                    Sync CA
+                    {r.isCa ? 'Sync CA' : 'Sync'}
                   </Button>
                 )}
                 {r.pinned ? (

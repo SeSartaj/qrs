@@ -1,8 +1,4 @@
-/**
- * CA-scoped, read-only mobile sync. A verifier may pull only the namespace of
- * one CA it has explicitly configured as trusted; global/key-based sync is not
- * part of the protocol.
- */
+/** TCert-scoped, read-only mobile sync rooted in one TCert and its endpoints. */
 import { fromBase64Url, parseSignedObject, type QrsRuntime } from 'qrs-core';
 
 export interface MobileSyncResult {
@@ -27,12 +23,12 @@ export function baseUrl(endpoint: string): string {
   return endpoint.trim().replace(/\/+$/, '');
 }
 
-/** Endpoints for one CA only. */
-export async function syncEndpointsFor(qrs: QrsRuntime, caTcertId?: string): Promise<string[]> {
-  if (!caTcertId) return [];
+/** Endpoints for one TCert only. */
+export async function syncEndpointsFor(qrs: QrsRuntime, tcertId?: string): Promise<string[]> {
+  if (!tcertId) return [];
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const endpoint of await qrs.endpoints.effectiveEndpoints(caTcertId)) {
+  for (const endpoint of await qrs.endpoints.effectiveEndpoints(tcertId)) {
     const normalized = baseUrl(endpoint);
     if (normalized && !seen.has(normalized)) {
       seen.add(normalized);
@@ -42,31 +38,60 @@ export async function syncEndpointsFor(qrs: QrsRuntime, caTcertId?: string): Pro
   return out;
 }
 
-/** Pull the records introduced and authored by one locally configured CA. */
+/** Pull the records hosted for one local TCert. CAs expose their enrolled
+ * namespace; ordinary TCerts expose their own public-key namespace. */
 export async function syncCert(
   qrs: QrsRuntime,
-  caTcertId: string,
+  tcertId: string,
   opts?: { endpoint?: string }
 ): Promise<MobileSyncResult> {
-  if (!(await qrs.deps.trustStore.isCa(caTcertId))) {
-    return { tcertsDownloaded: 0, statementsApplied: 0, errors: ['Only a trusted CA can be synced.'] };
-  }
-  const bytes = await qrs.deps.certificateStore.get(caTcertId);
-  if (!bytes) return { tcertsDownloaded: 0, statementsApplied: 0, errors: [`certificate not found: ${caTcertId}`] };
+  const bytes = await qrs.deps.certificateStore.get(tcertId);
+  if (!bytes) return { tcertsDownloaded: 0, statementsApplied: 0, errors: [`certificate not found: ${tcertId}`] };
+  let parsed;
   try {
-    if (parseSignedObject(bytes).type !== 'tcert') throw new Error('not a TCert');
+    parsed = parseSignedObject(bytes);
+    if (parsed.type !== 'tcert') throw new Error('not a TCert');
   } catch (error) {
     return { tcertsDownloaded: 0, statementsApplied: 0, errors: [error instanceof Error ? error.message : 'malformed TCert'] };
   }
-  const endpoints = opts?.endpoint ? [opts.endpoint] : await syncEndpointsFor(qrs, caTcertId);
+  const isCa = await qrs.deps.trustStore.isCa(tcertId);
+  const endpoints = opts?.endpoint ? [opts.endpoint] : await syncEndpointsFor(qrs, tcertId);
   const aggregate: MobileSyncResult = { tcertsDownloaded: 0, statementsApplied: 0, errors: [] };
   for (const endpoint of endpoints) {
-    const result = await syncCaEndpoint(qrs, endpoint, caTcertId);
+    const result = await (isCa
+      ? syncCaEndpoint(qrs, endpoint, tcertId)
+      : syncTcertEndpoint(qrs, endpoint, parsed.signerKeyId));
     aggregate.tcertsDownloaded += result.tcertsDownloaded;
     aggregate.statementsApplied += result.statementsApplied;
     aggregate.errors.push(...result.errors);
   }
   return aggregate;
+}
+
+async function syncTcertEndpoint(qrs: QrsRuntime, endpoint: string, keyId: string): Promise<MobileSyncResult> {
+  const base = baseUrl(endpoint);
+  try {
+    const response = await fetch(`${base}/api/tcerts/${encodeURIComponent(keyId)}/objects/`);
+    if (!response.ok) throw new Error(`sync failed: HTTP ${response.status}`);
+    const payload = (await response.json()) as { objects?: ServerObject[] };
+    let statementsApplied = 0;
+    for (const object of payload.objects ?? []) {
+      if (object.type !== 'statement' || !object.bytesB64) continue;
+      try {
+        const result = await qrs.online.importStatement(fromBase64Url(object.bytesB64));
+        if (result.applied) statementsApplied++;
+      } catch (error) {
+        return {
+          tcertsDownloaded: 0,
+          statementsApplied,
+          errors: [`statement ${object.statementId ?? object.id}: ${error instanceof Error ? error.message : String(error)}`],
+        };
+      }
+    }
+    return { tcertsDownloaded: 0, statementsApplied, errors: [] };
+  } catch (error) {
+    return { tcertsDownloaded: 0, statementsApplied: 0, errors: [`${base}: ${error instanceof Error ? error.message : String(error)}`] };
+  }
 }
 
 async function syncCaEndpoint(qrs: QrsRuntime, endpoint: string, caTcertId: string): Promise<MobileSyncResult> {

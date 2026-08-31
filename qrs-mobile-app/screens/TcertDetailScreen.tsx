@@ -4,7 +4,7 @@
  * server(s) the certificate points to. Trust mutations stay on the Trust page.
  */
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   Appbar,
@@ -40,6 +40,7 @@ interface CertDetail {
   trusted: boolean;
   caName?: string;
   endpoints: string[];
+  mirrors: string[];
   signedDefault?: string;
   statementGroups: Record<'attestations' | 'revocations' | 'sdocs', StatementRow[]>;
 }
@@ -86,6 +87,10 @@ async function loadDetail(qrs: QrsRuntime, tcertId: string): Promise<CertDetail 
   const signedByThis = (entry: { byTcertId?: string; byKeyId?: string }): boolean =>
     entry.byTcertId === tcertId || (!entry.byTcertId && entry.byKeyId === parsed.signerKeyId);
   const newestFirst = (rows: StatementRow[]): StatementRow[] => rows.sort((a, b) => b.issuedAt - a.issuedAt);
+  const signedDefault = typeof data.onlineEndpoint === 'string'
+    ? data.onlineEndpoint.trim().replace(/\/+$/, '')
+    : undefined;
+  const mirrors = (await qrs.endpoints.listMirrors(tcertId)).filter((ep) => ep !== signedDefault);
   return {
     tcertId,
     keyId: parsed.signerKeyId,
@@ -98,7 +103,8 @@ async function loadDetail(qrs: QrsRuntime, tcertId: string): Promise<CertDetail 
     trusted: trust.state === 'valid',
     caName: trust.ca?.caName,
     endpoints: await qrs.endpoints.effectiveEndpoints(tcertId),
-    signedDefault: data.onlineEndpoint,
+    mirrors,
+    signedDefault,
     statementGroups: {
       attestations: newestFirst(attestations.filter((x) => x.caTcertId === tcertId).map((x) => ({ type: 'Attestation', target: x.targetTcertId, issuedAt: x.issuedAt }))),
       revocations: newestFirst([
@@ -120,6 +126,8 @@ export function TcertDetailScreen({ route, navigation }: Props) {
   const [result, setResult] = useState<MobileSyncResult | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptUrl, setPromptUrl] = useState('');
+  const [endpointUrl, setEndpointUrl] = useState('');
+  const [endpointBusy, setEndpointBusy] = useState(false);
   const [dateFormat, setDateFormat] = useState<DateFormat>('gregorian');
   const [tab, setTab] = useState<'overview' | 'attestations' | 'revocations' | 'sdocs'>('overview');
 
@@ -150,6 +158,34 @@ export function TcertDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  const addMirror = async (): Promise<void> => {
+    const url = endpointUrl.trim();
+    if (!url || endpointBusy) return;
+    setEndpointBusy(true);
+    try {
+      await qrs.endpoints.addMirror(tcertId, url);
+      setEndpointUrl('');
+      await refresh();
+    } catch (error) {
+      Alert.alert('Unable to add endpoint', error instanceof Error ? error.message : String(error));
+    } finally {
+      setEndpointBusy(false);
+    }
+  };
+
+  const removeMirror = async (url: string): Promise<void> => {
+    if (endpointBusy) return;
+    setEndpointBusy(true);
+    try {
+      await qrs.endpoints.removeMirror(tcertId, url);
+      await refresh();
+    } catch (error) {
+      Alert.alert('Unable to remove endpoint', error instanceof Error ? error.message : String(error));
+    } finally {
+      setEndpointBusy(false);
+    }
+  };
+
   if (!detail) {
     return (
       <View style={styles.root}>
@@ -170,13 +206,22 @@ export function TcertDetailScreen({ route, navigation }: Props) {
       : '—';
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
       <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title={truncateName(detail.name)} />
       </Appbar.Header>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets
+      >
         <SegmentedButtons
           value={tab}
           onValueChange={(value) => setTab(value as typeof tab)}
@@ -194,7 +239,7 @@ export function TcertDetailScreen({ route, navigation }: Props) {
             title={<Text variant="titleMedium">{detail.name}</Text>}
             titleVariant="titleMedium"
             subtitle={detail.tcertId}
-            right={() => (detail.trusted ? <VerifiedBadge /> : null)}
+            right={() => (detail.pinned && !detail.caName ? <VerifiedBadge /> : null)}
           />
           <Card.Content>
             <Text variant="bodySmall" style={styles.muted}>
@@ -216,9 +261,12 @@ export function TcertDetailScreen({ route, navigation }: Props) {
             </Text>
             <Text variant="bodyMedium">{validityText}</Text>
             {detail.caName ? (
-              <Text variant="bodySmall" style={{ color: VERIFIED_BLUE, marginTop: 6 }}>
-                Verified by {detail.caName}
-              </Text>
+              <View style={[styles.nameRow, styles.verifiedBy]}>
+                <Text variant="bodySmall" style={{ color: VERIFIED_BLUE }}>
+                  Verified by {detail.caName}
+                </Text>
+                {!detail.pinned ? <VerifiedBadge size={12} /> : null}
+              </View>
             ) : null}
           </Card.Content>
         </Card>
@@ -231,14 +279,54 @@ export function TcertDetailScreen({ route, navigation }: Props) {
                 No endpoints configured for this certificate.
               </Text>
             )}
-            {detail.endpoints.map((ep) => (
-              <View key={ep} style={styles.endpointRow}>
-                <Text variant="bodySmall" style={[styles.mono, styles.flex]}>
-                  {ep}
-                </Text>
-                <Chip textStyle={{ fontSize: 10 }}>{ep === (detail.signedDefault ? detail.signedDefault.replace(/\/+$/, '') : undefined) ? 'default' : 'mirror'}</Chip>
-              </View>
-            ))}
+            {detail.endpoints.map((ep) => {
+              const isDefault = ep === detail.signedDefault;
+              const isConfiguredMirror = detail.mirrors.includes(ep);
+              return (
+                <View key={ep} style={styles.endpointRow}>
+                  <Text variant="bodySmall" style={[styles.mono, styles.flex]}>
+                    {ep}
+                  </Text>
+                  <Chip textStyle={{ fontSize: 10 }}>{isDefault ? 'default' : 'mirror'}</Chip>
+                  {isConfiguredMirror && !isDefault ? (
+                    <Button
+                      compact
+                      mode="text"
+                      disabled={endpointBusy}
+                      onPress={() => void removeMirror(ep)}
+                      textColor={theme.colors.error}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </View>
+              );
+            })}
+            <View style={styles.endpointForm}>
+              <TextInput
+                mode="outlined"
+                dense
+                label="Mirror URL"
+                placeholder="https://another-server.example"
+                value={endpointUrl}
+                onChangeText={setEndpointUrl}
+                onSubmitEditing={() => void addMirror()}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                disabled={endpointBusy}
+                style={styles.endpointInput}
+              />
+              <Button
+                mode="outlined"
+                compact
+                loading={endpointBusy}
+                disabled={endpointBusy || !endpointUrl.trim()}
+                onPress={() => void addMirror()}
+              >
+                Add
+              </Button>
+            </View>
           </Card.Content>
         </Card>
 
@@ -309,7 +397,7 @@ export function TcertDetailScreen({ route, navigation }: Props) {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -338,7 +426,11 @@ const styles = StyleSheet.create({
   mono: { fontFamily: 'monospace', fontSize: 12 },
   flex: { flex: 1 },
   rowChips: { flexDirection: 'row', gap: 6, marginVertical: 8, flexWrap: 'wrap' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  verifiedBy: { marginTop: 6 },
   endpointRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 2 },
+  endpointForm: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  endpointInput: { flex: 1 },
   syncBtn: { marginTop: 4 },
   tabs: { marginBottom: 12 },
 });
