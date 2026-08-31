@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -6,12 +7,9 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  MenuItem,
-  Select,
   Toolbar,
   Typography,
-  FormControl,
-  InputLabel,
+  IconButton,
 } from '@mui/material';
 import type { ReactNode } from 'react';
 import BadgeIcon from '@mui/icons-material/Badge';
@@ -21,8 +19,9 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import BlockIcon from '@mui/icons-material/Block';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ArchiveIcon from '@mui/icons-material/Archive';
-import { LANGUAGE_NAMES, setLanguage, type LanguageCode } from '../i18n';
-import { CALENDAR_LABELS, setCalendar, useCalendar, type CalendarId } from '../calendarSetting';
+import MenuOpenIcon from '@mui/icons-material/MenuOpen';
+import MenuIcon from '@mui/icons-material/Menu';
+import { qrs, safe } from '../api';
 
 /**
  * Top-level pages. `issue` (create TCert / manage keys) is deliberately kept out
@@ -57,59 +56,39 @@ interface LayoutProps {
 }
 
 export function Layout({ page, onNavigate, children }: LayoutProps) {
-  const { t, i18n } = useTranslation();
-  const lang = (i18n.resolvedLanguage ?? 'en') as LanguageCode;
-  const calendar = useCalendar();
+  const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => { void safe(qrs().config.get()).then((result) => { if (result.ok) setCollapsed(result.value.sidebarCollapsed === true); }); }, []);
+  const toggleSidebar = (): void => {
+    const next = !collapsed;
+    setCollapsed(next);
+    void safe(qrs().config.get()).then((result) => { if (result.ok) void qrs().config.set({ ...result.value, sidebarCollapsed: next }); });
+  };
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <Drawer
         variant="permanent"
         sx={{
-          width: DRAWER_WIDTH,
+          width: collapsed ? 72 : DRAWER_WIDTH,
           flexShrink: 0,
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          '& .MuiDrawer-paper': { width: collapsed ? 72 : DRAWER_WIDTH, boxSizing: 'border-box', overflowX: 'hidden' },
         }}
       >
-        <Toolbar>
-          <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.5 }}>
-            QRS Desktop
-          </Typography>
+        <Toolbar sx={collapsed ? { px: 0, justifyContent: 'center' } : undefined}>
+          {!collapsed && <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: 0.5 }}>QRS Desktop</Typography>}
+          <IconButton aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleSidebar} sx={{ ml: collapsed ? 0 : 'auto' }}>
+            {collapsed ? <MenuIcon /> : <MenuOpenIcon />}
+          </IconButton>
         </Toolbar>
         <List>
           {NAV_KEYS.map((item) => (
-            <ListItemButton key={item.id} selected={page === item.id} onClick={() => onNavigate(item.id)}>
-              <ListItemIcon>{NAV_ICONS[item.id]}</ListItemIcon>
-              <ListItemText primary={t(item.labelKey)} />
+            <ListItemButton key={item.id} selected={page === item.id} onClick={() => onNavigate(item.id)} sx={collapsed ? { px: 0, justifyContent: 'center' } : undefined}>
+              <ListItemIcon sx={{ minWidth: collapsed ? 0 : 40 }}>{NAV_ICONS[item.id]}</ListItemIcon>
+              {!collapsed && <ListItemText primary={t(item.labelKey)} />}
             </ListItemButton>
           ))}
         </List>
-        <Box sx={{ mt: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel>{t('nav.language')}</InputLabel>
-            <Select value={lang} label={t('nav.language')} onChange={(e) => setLanguage(e.target.value as LanguageCode)}>
-              {(Object.keys(LANGUAGE_NAMES) as LanguageCode[]).map((code) => (
-                <MenuItem key={code} value={code}>
-                  {LANGUAGE_NAMES[code]}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth size="small">
-            <InputLabel>{t('nav.calendar')}</InputLabel>
-            <Select
-              value={calendar}
-              label={t('nav.calendar')}
-              onChange={(e) => setCalendar(e.target.value as CalendarId)}
-            >
-              {(Object.keys(CALENDAR_LABELS) as CalendarId[]).map((c) => (
-                <MenuItem key={c} value={c}>
-                  {CALENDAR_LABELS[c]}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
       </Drawer>
       <Box component="main" sx={{ flexGrow: 1, p: 3, maxWidth: 1100 }}>
         {children}

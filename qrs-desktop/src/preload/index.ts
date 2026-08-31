@@ -33,6 +33,10 @@ const api: QrsApi = {
   keys: {
     list: () => ipcRenderer.invoke(IPC.keys.list),
     generate: (algorithm: AlgorithmId) => ipcRenderer.invoke(IPC.keys.generate, algorithm),
+    passwordStatus: () => ipcRenderer.invoke(IPC.keys.passwordStatus),
+    setPassword: (password: string) => ipcRenderer.invoke(IPC.keys.setPassword, password),
+    unlock: (password: string) => ipcRenderer.invoke(IPC.keys.unlock, password),
+    removePassword: (password: string) => ipcRenderer.invoke(IPC.keys.removePassword, password),
   },
   certificates: {
     list: () => ipcRenderer.invoke(IPC.certificates.list),
@@ -41,6 +45,15 @@ const api: QrsApi = {
     import: (bytesB64: string) => ipcRenderer.invoke(IPC.certificates.import, bytesB64),
     export: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.export, tcertId),
     remove: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.remove, tcertId),
+    setPin: (tcertId: TcertId, pin: string) => ipcRenderer.invoke(IPC.certificates.setPin, tcertId, pin),
+    changePin: (tcertId: TcertId, previousPin: string, nextPin: string) => ipcRenderer.invoke(IPC.certificates.changePin, tcertId, previousPin, nextPin),
+    removePin: (tcertId: TcertId, previousPin: string) => ipcRenderer.invoke(IPC.certificates.removePin, tcertId, previousPin),
+    verifyPin: (tcertId: TcertId, pin: string) => ipcRenderer.invoke(IPC.certificates.verifyPin, tcertId, pin),
+    isPinAuthorized: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.isPinAuthorized, tcertId),
+    beginPinSession: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.beginPinSession, tcertId),
+    endPinSession: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.endPinSession, tcertId),
+    exportSchema: (tcertId: TcertId) => ipcRenderer.invoke(IPC.certificates.exportSchema, tcertId),
+    importSchema: () => ipcRenderer.invoke(IPC.certificates.importSchema),
   },
   documents: {
     list: () => ipcRenderer.invoke(IPC.documents.list),

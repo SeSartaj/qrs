@@ -24,14 +24,15 @@ export type { AlgorithmId, KeyId, RevocationType, SdocId, TcertId } from 'qrs-co
 
 export const IPC = {
   app: { getInfo: 'app:getInfo' },
-  keys: { list: 'keys:list', generate: 'keys:generate' },
+  keys: { list: 'keys:list', generate: 'keys:generate', passwordStatus: 'keys:passwordStatus', setPassword: 'keys:setPassword', unlock: 'keys:unlock', removePassword: 'keys:removePassword' },
   certificates: {
     list: 'certificates:list',
     create: 'certificates:create',
     get: 'certificates:get',
     import: 'certificates:import',
     export: 'certificates:export',
-    remove: 'certificates:remove',
+    remove: 'certificates:remove', setPin: 'certificates:setPin', changePin: 'certificates:changePin', removePin: 'certificates:removePin', verifyPin: 'certificates:verifyPin', isPinAuthorized: 'certificates:isPinAuthorized', beginPinSession: 'certificates:beginPinSession', endPinSession: 'certificates:endPinSession',
+    exportSchema: 'certificates:exportSchema', importSchema: 'certificates:importSchema',
   },
   documents: {
     list: 'documents:list',
@@ -127,6 +128,10 @@ export interface GlobalConfig {
   calendar?: string;
   /** Which SDoc field columns to show in the documents table (by field name). */
   sdocColumns?: string[];
+  /** Whether private keys use the user-configured password envelope. */
+  privateKeyPasswordConfigured?: boolean;
+  sidebarCollapsed?: boolean;
+  tcertPins?: Record<string, { salt: string; hash: string }>;
   /** TCerts hidden from the normal certificate list but retained locally. */
   archivedTcerts?: string[];
   /** Free-form extension point for future settings. */
@@ -151,6 +156,7 @@ export interface TcertSummary {
   endpoints?: string[];
   /** true when we hold this certificate's private key (it is one of ours). */
   own?: boolean;
+  hasPin?: boolean;
   metadata?: Record<string, unknown>;
   bytesB64: string;
   /** Trust state. */
@@ -215,6 +221,7 @@ export interface IssueInput {
   tcertId: TcertId;
   values: Record<string, unknown>;
   issuedAt?: number;
+  pin?: string;
 }
 
 export interface VerifyInput {
@@ -445,6 +452,10 @@ export interface QrsApi {
   keys: {
     list(): Promise<KeySummary[]>;
     generate(algorithm: AlgorithmId): Promise<KeySummary>;
+    passwordStatus(): Promise<{ configured: boolean; unlocked: boolean }>;
+    setPassword(password: string): Promise<void>;
+    unlock(password: string): Promise<void>;
+    removePassword(password: string): Promise<void>;
   };
   certificates: {
     list(): Promise<TcertSummary[]>;
@@ -453,6 +464,15 @@ export interface QrsApi {
     import(bytesB64: string): Promise<TcertSummary>;
     export(tcertId: TcertId): Promise<string>;
     remove(tcertId: TcertId): Promise<void>;
+    setPin(tcertId: TcertId, pin: string): Promise<void>;
+    changePin(tcertId: TcertId, previousPin: string, nextPin: string): Promise<void>;
+    removePin(tcertId: TcertId, previousPin: string): Promise<void>;
+    verifyPin(tcertId: TcertId, pin: string): Promise<boolean>;
+    isPinAuthorized(tcertId: TcertId): Promise<boolean>;
+    beginPinSession(tcertId: TcertId): Promise<void>;
+    endPinSession(tcertId: TcertId): Promise<void>;
+    exportSchema(tcertId: TcertId): Promise<{ saved: boolean; path?: string; error?: string }>;
+    importSchema(): Promise<FieldSchema[]>;
   };
   documents: {
     list(): Promise<DocumentSummary[]>;

@@ -2,9 +2,9 @@
  * IPC surface. Registers every `ipcMain.handle` used by the renderer and wires the
  * context-provider replies. All byte payloads cross the boundary as base64url.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { app, dialog, ipcMain, nativeImage } from 'electron';
-import { attachmentReference, encodeBundle, encodeQrsFile, fromBase64Url, parseSignedObject, parseStatement, QRS_FILE_EXTENSION, sdocIdOf, toBase64Url } from 'qrs-core';
+import { attachmentReference, encodeBundle, encodeQrsFile, fromBase64Url, parseSignedObject, parseStatement, QRS_FILE_EXTENSION, sdocIdOf, toBase64Url, type FieldSchema } from 'qrs-core';
 import {
   IPC,
   type AppInfo,
@@ -42,6 +42,7 @@ import { fetchRawAttachment, fileNameFor, openWithDefaultApp, saveFile } from '.
 import { decodeObject, verifyWithDetail } from './objects.js';
 import { listCertificates, listDocuments, summarizeDocument, summarizeTcert } from './summaries.js';
 import { syncAll, syncTcert } from './sync.js';
+import { TcertPinStore } from './tcertPinStore.js';
 
 /** Union of the effective distribution endpoints across every TCert of a key. */
 async function findEndpoints(rt: DesktopRuntime, keyId: string): Promise<string[]> {
@@ -131,6 +132,8 @@ async function publishAttestation(
 }
 
 export function registerIpc(rt: DesktopRuntime): void {
+  const pins = new TcertPinStore(() => rt.config.get(), (config) => rt.config.set(config));
+  const withPin = (summary: TcertSummary): TcertSummary => ({ ...summary, hasPin: pins.has(summary.tcertId) });
   /* ---------------- app ---------------- */
   ipcMain.handle(IPC.app.getInfo, async (): Promise<AppInfo> => {
     return {
@@ -167,20 +170,31 @@ export function registerIpc(rt: DesktopRuntime): void {
     const revoked = await rt.qrs.deps.revocationStore.getRevokedKey(keyId);
     return { keyId, algorithm: algorithm as never, tcertCount: 0, revoked: revoked ? { issuedAt: revoked.issuedAt, reason: revoked.reason } : undefined };
   });
+  ipcMain.handle(IPC.keys.passwordStatus, async () => ({ configured: rt.privateKeyStore.isPasswordConfigured(), unlocked: rt.privateKeyStore.isPasswordUnlocked() }));
+  ipcMain.handle(IPC.keys.setPassword, async (_e, password: string) => {
+    await rt.privateKeyStore.setPassword(password);
+    rt.config.set({ ...rt.config.get(), privateKeyPasswordConfigured: true });
+  });
+  ipcMain.handle(IPC.keys.unlock, async (_e, password: string) => rt.privateKeyStore.unlock(password));
+  ipcMain.handle(IPC.keys.removePassword, async (_e, password: string) => {
+    await rt.privateKeyStore.unlock(password);
+    await rt.privateKeyStore.removePassword();
+    rt.config.set({ ...rt.config.get(), privateKeyPasswordConfigured: false });
+  });
 
   /* ---------------- certificates ---------------- */
   ipcMain.handle(IPC.certificates.list, async (): Promise<TcertSummary[]> => {
-    return listCertificates(rt.qrs);
+    return (await listCertificates(rt.qrs)).map(withPin);
   });
 
   ipcMain.handle(IPC.certificates.create, async (_e, input: CreateTcertInput): Promise<TcertSummary> => {
     const result = await rt.qrs.certificates.createTcert(input);
-    return summarizeTcert(rt.qrs, result.bytes);
+    return withPin(await summarizeTcert(rt.qrs, result.bytes));
   });
 
   ipcMain.handle(IPC.certificates.get, async (_e, tcertId: string): Promise<TcertSummary | null> => {
     const bytes = await rt.qrs.deps.certificateStore.get(tcertId);
-    return bytes ? summarizeTcert(rt.qrs, bytes) : null;
+    return bytes ? withPin(await summarizeTcert(rt.qrs, bytes)) : null;
   });
 
   ipcMain.handle(IPC.certificates.import, async (_e, bytesB64: string): Promise<TcertSummary> => {
@@ -189,7 +203,7 @@ export function registerIpc(rt: DesktopRuntime): void {
     if (parsed.type !== 'tcert') throw new Error('Imported object is not a TCert');
     const tcertId = `${parsed.signerKeyId}:${(parsed.data as { certificateNumber: number }).certificateNumber}`;
     await rt.qrs.deps.certificateStore.save(tcertId, bytes);
-    return summarizeTcert(rt.qrs, bytes);
+    return withPin(await summarizeTcert(rt.qrs, bytes));
   });
 
   ipcMain.handle(IPC.certificates.export, async (_e, tcertId: string): Promise<string> => {
@@ -203,6 +217,41 @@ export function registerIpc(rt: DesktopRuntime): void {
     await rt.qrs.deps.trustStore.removePinned(tcertId);
     await rt.qrs.deps.trustStore.removeCa(tcertId);
     await rt.qrs.deps.trustStore.removeDistrust(tcertId);
+    if (pins.has(tcertId)) {
+      const config = rt.config.get();
+      const tcertPins = { ...(config.tcertPins ?? {}) };
+      delete tcertPins[tcertId];
+      rt.config.set({ ...config, tcertPins });
+    }
+  });
+  ipcMain.handle(IPC.certificates.setPin, async (_e, tcertId: string, pin: string) => pins.set(tcertId, pin));
+  ipcMain.handle(IPC.certificates.changePin, async (_e, tcertId: string, previousPin: string, nextPin: string) => {
+    if (!pins.verify(tcertId, previousPin)) throw new Error('Incorrect TCert PIN.');
+    pins.set(tcertId, nextPin);
+  });
+  ipcMain.handle(IPC.certificates.removePin, async (_e, tcertId: string, previousPin: string) => pins.remove(tcertId, previousPin));
+  ipcMain.handle(IPC.certificates.verifyPin, async (_e, tcertId: string, pin: string) => pins.verify(tcertId, pin));
+  ipcMain.handle(IPC.certificates.isPinAuthorized, async (_e, tcertId: string) => pins.isAuthorized(tcertId));
+  ipcMain.handle(IPC.certificates.beginPinSession, async (_e, tcertId: string) => pins.beginSession(tcertId));
+  ipcMain.handle(IPC.certificates.endPinSession, async (_e, tcertId: string) => pins.endSession(tcertId));
+  ipcMain.handle(IPC.certificates.exportSchema, async (_e, tcertId: string) => {
+    const bytes = await rt.qrs.deps.certificateStore.get(tcertId);
+    if (!bytes) throw new Error(`TCert not found: ${tcertId}`);
+    const parsed = parseSignedObject(bytes);
+    const name = String((parsed.data as { identity?: { name?: string } }).identity?.name ?? 'document').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const result = await dialog.showSaveDialog({ title: 'Export schema', defaultPath: `${name} schema.qrs`, filters: [{ name: 'QRS schema', extensions: ['qrs'] }] });
+    if (result.canceled || !result.filePath) return { saved: false };
+    try { writeFileSync(result.filePath, JSON.stringify({ type: 'qrs-schema', version: 1, name: (parsed.data as { identity?: { name?: string } }).identity?.name, fields: (parsed.data as { schema?: unknown[] }).schema ?? [] }, null, 2), 'utf8'); return { saved: true, path: result.filePath }; }
+    catch (error) { return { saved: false, error: error instanceof Error ? error.message : 'failed to write schema' }; }
+  });
+  ipcMain.handle(IPC.certificates.importSchema, async () => {
+    const result = await dialog.showOpenDialog({ title: 'Import schema', properties: ['openFile'], filters: [{ name: 'QRS schema', extensions: ['qrs', 'json'] }] });
+    if (result.canceled || !result.filePaths[0]) throw new Error('Schema import cancelled');
+    let parsed: unknown;
+    try { parsed = JSON.parse(readFileSync(result.filePaths[0], 'utf8')); } catch { throw new Error('Invalid schema file.'); }
+    const fields = (parsed && typeof parsed === 'object' && Array.isArray((parsed as { fields?: unknown }).fields)) ? (parsed as { fields: FieldSchema[] }).fields : undefined;
+    if (!fields) throw new Error('Invalid schema file: fields are missing.');
+    return fields;
   });
 
   /* ---------------- documents ---------------- */
@@ -211,6 +260,7 @@ export function registerIpc(rt: DesktopRuntime): void {
   });
 
   ipcMain.handle(IPC.documents.issue, async (_e, input: IssueInput): Promise<DocumentSummary> => {
+    if (pins.has(input.tcertId) && !pins.isAuthorized(input.tcertId) && !pins.verify(input.tcertId, input.pin ?? '')) throw new Error('Incorrect TCert PIN.');
     const result = await rt.qrs.signing.issueSdoc(input);
     return summarizeDocument(rt.qrs, result.bytes);
   });

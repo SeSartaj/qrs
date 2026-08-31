@@ -67,6 +67,16 @@ export function SdocDetailPage({ sdocId, onBack, onVerify, showNotice, signerKey
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onBack();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onBack]);
+
+  useEffect(() => {
     void (async () => {
       const res = await safe(qrs().documents.get(sdocId));
       if (res.ok) setDoc(res.value);
@@ -93,7 +103,7 @@ export function SdocDetailPage({ sdocId, onBack, onVerify, showNotice, signerKey
     return (
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Tooltip title={t('documents.backToCerts')}>
+          <Tooltip title={`${t('documents.backToCerts')} (Esc)`}>
             <IconButton onClick={onBack}>
               <ArrowBackIcon />
             </IconButton>
@@ -109,7 +119,7 @@ export function SdocDetailPage({ sdocId, onBack, onVerify, showNotice, signerKey
     return (
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Tooltip title={t('documents.backToCerts')}>
+        <Tooltip title={`${t('documents.backToCerts')} (Esc)`}>
             <IconButton onClick={onBack}>
               <ArrowBackIcon />
             </IconButton>
@@ -125,7 +135,7 @@ export function SdocDetailPage({ sdocId, onBack, onVerify, showNotice, signerKey
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Tooltip title={t('documents.backToCerts')}>
+        <Tooltip title={`${t('documents.backToCerts')} (Esc)`}>
             <IconButton onClick={onBack}>
               <ArrowBackIcon />
             </IconButton>

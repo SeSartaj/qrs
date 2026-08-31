@@ -9,12 +9,21 @@ import { TrustPage } from './pages/TrustPage';
 import { RevocationPage } from './pages/RevocationPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ArchivePage } from './pages/ArchivePage';
+import { GlobalPasswordPrompt } from './components/GlobalPasswordPrompt';
+import { qrs } from './api';
 
 export default function App() {
   const [page, setPage] = useState<PageId>('documents');
   const [notice, setNotice] = useState<{ severity: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [pendingVerify, setPendingVerify] = useState<string | null>(null);
   const [initialTcertId, setInitialTcertId] = useState<string | null>(null);
+  const [globalPasswordLocked, setGlobalPasswordLocked] = useState(false);
+
+  useEffect(() => {
+    void qrs().keys.passwordStatus().then((status) => {
+      if (status.configured && !status.unlocked) setGlobalPasswordLocked(true);
+    }).catch(() => undefined);
+  }, []);
 
   // Allow the host (screenshot tooling) to navigate pages.
   useEffect(() => {
@@ -47,7 +56,7 @@ export default function App() {
         }}
       />
     ),
-    issue: <IssuerPage showNotice={showNotice} onCreated={handleTcertCreated} />,
+    issue: <IssuerPage showNotice={showNotice} onCreated={handleTcertCreated} onBack={() => setPage('settings')} />,
     verify: (
       <VerifyPage
         initialBytesB64={pendingVerify ?? undefined}
@@ -67,6 +76,7 @@ export default function App() {
         {pages[page]}
       </Layout>
       <ContextDialogHost />
+      <GlobalPasswordPrompt open={globalPasswordLocked} onUnlocked={() => setGlobalPasswordLocked(false)} />
       <Snackbar
         open={notice !== null}
         autoHideDuration={5000}

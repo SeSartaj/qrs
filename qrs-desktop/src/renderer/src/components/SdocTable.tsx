@@ -34,6 +34,7 @@ const PAGE_SIZE_OPTIONS = [5,20, 50, 100];
 function renderValue(v: DocumentValue): string {
   const val = v.value;
   if (val === undefined || val === null || val === '') return '—';
+  if (v.type === 'datetimeEpoch' && typeof val === 'number') return formatDate(val);
   if (typeof val === 'string' && v.type === 'attachment') {
     return `${v.contentType ?? 'file'} · ${val.slice(0, 12)}…`;
   }
@@ -85,7 +86,7 @@ export function SdocTable({
 }) {
   const [query, setQuery] = useState('');
   const [columnMenu, setColumnMenu] = useState<null | HTMLElement>(null);
-  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
 
@@ -111,12 +112,18 @@ export function SdocTable({
     return seen;
   }, [docs]);
 
-  const columns = useMemo(() => allColumns.filter((c) => !hiddenColumns.includes(c)), [allColumns, hiddenColumns]);
+  // By default show only the first two field columns. Once the user changes the
+  // selection, the exact hidden-column list is persisted in global config.
+  const effectiveHiddenColumns = hiddenColumns ?? allColumns.slice(2);
+  const columns = useMemo(() => allColumns.filter((c) => !effectiveHiddenColumns.includes(c)), [allColumns, effectiveHiddenColumns]);
 
   const toggleColumn = (name: string): void => {
     setHiddenColumns((prev) => {
-      const next = prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name];
-      void safe(qrs().config.set({ sdocColumns: next }));
+      const current = prev ?? allColumns.slice(2);
+      const next = current.includes(name) ? current.filter((c) => c !== name) : [...current, name];
+      void safe(qrs().config.get()).then((result) => {
+        if (result.ok) void qrs().config.set({ ...result.value, sdocColumns: next });
+      });
       return next;
     });
   };
@@ -188,7 +195,7 @@ export function SdocTable({
                 control={
                   <Checkbox
                     size="small"
-                    checked={!hiddenColumns.includes(c)}
+                    checked={!effectiveHiddenColumns.includes(c)}
                     onChange={() => toggleColumn(c)}
                   />
                 }

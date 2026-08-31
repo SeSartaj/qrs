@@ -15,11 +15,13 @@ import {
   Select,
   TextField,
   Typography,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import type { AlgorithmId, FieldSchema, FieldType } from 'qrs-core';
 import { FIELD_TYPES } from 'qrs-core';
 import { useTranslation } from 'react-i18next';
@@ -133,7 +135,7 @@ function draftToSchema(f: DraftField): FieldSchema {
   return field;
 }
 
-export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; onCreated: (tcertId: string) => void }) {
+export function IssuerPage({ showNotice, onCreated, onBack }: { showNotice: ShowNotice; onCreated: (tcertId: string) => void; onBack: () => void }) {
   const { t } = useTranslation();
   const [algorithm, setAlgorithm] = useState<AlgorithmId>('Ed25519');
   const [name, setName] = useState('');
@@ -141,7 +143,9 @@ export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; 
   const [validAfter, setValidAfter] = useState<number | undefined>(undefined);
   const [validBefore, setValidBefore] = useState<number | undefined>(undefined);
   const [sdocMaxAge, setSdocMaxAge] = useState('');
-  const [fields, setFields] = useState<DraftField[]>([emptyField(1)]);
+  const [fields, setFields] = useState<DraftField[]>([]);
+  const [schemaMode, setSchemaMode] = useState<'create' | 'import'>('create');
+  const [schemaImported, setSchemaImported] = useState(false);
   const [busy, setBusy] = useState(false);
   const [createdTcert, setCreatedTcert] = useState<{ tcertId: string; keyId: string; name: string; bytesB64: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +179,17 @@ export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; 
       return next;
     });
 
+  const importSchema = async (): Promise<void> => {
+    const result = await safe(qrs().certificates.importSchema());
+    if (!result.ok) { setError(result.error); return; }
+    setSchemaImported(true);
+    setFields(result.value.map((field, index) => {
+      const rules = field.inputRules ?? {};
+      const options = Array.isArray(field.options) ? field.options.join(', ') : Array.isArray(rules.options) ? rules.options.map((o) => typeof o === 'string' ? o : `${(o as { label?: string }).label ?? ''}=${(o as { value?: string }).value ?? ''}`).join('\n') : '';
+      return { ...emptyField(index + 1, field.type as FieldType), name: field.name, label: field.label, options, required: rules.required === true, minLength: String(rules.minLength ?? ''), maxLength: String(rules.maxLength ?? ''), min: String(rules.min ?? ''), max: String(rules.max ?? ''), maxRadius: String((field.verifyRules as { maxRadius?: unknown } | undefined)?.maxRadius ?? ''), binding: field.binding === 'stripped' ? 'stripped' : field.binding === 'inline' ? 'inline' : 'none', defaultValue: typeof field.default === 'string' ? field.default : field.default ? 'now' : '', contentType: String(rules.contentType ?? 'image/png'), dateExpressions: Array.isArray((field.verifyRules as { expressions?: unknown[] } | undefined)?.expressions) ? ((field.verifyRules as { expressions: unknown[] }).expressions).join('\n') : '' };
+    }));
+  };
+
   const setValidityYears = (years: number): void => {
     const now = Math.floor(Date.now() / 1000);
     setValidAfter(now);
@@ -185,6 +200,10 @@ export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; 
     setError(null);
     if (!name.trim()) {
       setError(t('issuer.errName'));
+      return;
+    }
+    if (schemaMode === 'import' && !schemaImported) {
+      setError('Choose a schema file before creating the TCert.');
       return;
     }
     if (fields.length > 0 && fields.some((f) => !f.name.trim() || !f.label.trim())) {
@@ -225,9 +244,10 @@ export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; 
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 3 }}>
-        {t('issuer.title')}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <Tooltip title="Back to Settings"><IconButton onClick={onBack}><ArrowBackIcon /></IconButton></Tooltip>
+        <Typography variant="h5">{t('issuer.title')}</Typography>
+      </Box>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
@@ -341,6 +361,14 @@ export function IssuerPage({ showNotice, onCreated }: { showNotice: ShowNotice; 
       <Typography variant="h6" sx={{ mb: 1 }}>
         {t('issuer.documentSchema')}
       </Typography>
+      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+        <InputLabel>Schema source</InputLabel>
+        <Select value={schemaMode} label="Schema source" onChange={(e) => { setSchemaMode(e.target.value as 'create' | 'import'); setSchemaImported(false); }}>
+          <MenuItem value="create">Create a new schema</MenuItem>
+          <MenuItem value="import">Import an existing schema</MenuItem>
+        </Select>
+      </FormControl>
+      {schemaMode === 'import' && <Button variant="outlined" onClick={() => void importSchema()} sx={{ mb: 2 }}>Choose schema file</Button>}
       {fields.map((f, idx) => (
         <Card key={f.id} sx={{ mb: 1.5 }}>
           <CardContent>

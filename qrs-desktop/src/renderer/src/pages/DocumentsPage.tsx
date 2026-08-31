@@ -29,6 +29,8 @@ import { SdocDetailPage } from './SdocDetailPage';
 import { AttestTcertPage } from './AttestTcertPage';
 import { AttestationDetailPage } from './AttestationDetailPage';
 import { OverflowMenu } from '../components/OverflowMenu';
+import { TcertPinDialog } from '../components/TcertPinDialog';
+import { TcertPinPrompt } from '../components/TcertPinPrompt';
 
 type ShowNotice = (severity: 'success' | 'error' | 'info', text: string) => void;
 
@@ -54,10 +56,15 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
   const [attesting, setAttesting] = useState(false);
   const [selectedAttestationTarget, setSelectedAttestationTarget] = useState<string | null>(null);
   const [certTab, setCertTab] = useState('sdocs');
+  const [tcertInfoTab, setTcertInfoTab] = useState('details');
   const [trustState, setTrustState] = useState<TrustState | null>(null);
   const [revocationState, setRevocationState] = useState<RevocationState | null>(null);
   const [archivedTcerts, setArchivedTcerts] = useState<string[]>([]);
   const [pendingBlock, setPendingBlock] = useState<{ sdocId: string; action: 'block' | 'unblock' } | null>(null);
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinPromptOpen, setPinPromptOpen] = useState(false);
+  const [authorizedPin, setAuthorizedPin] = useState<string | undefined>();
+  const [pinAuthorized, setPinAuthorized] = useState(false);
 
   const reload = useCallback(async () => {
     const [tRes, dRes, trustRes, revocationRes, configRes] = await Promise.all([
@@ -100,6 +107,17 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
     () => (selectedTcertId ? (tcerts.find((x) => x.tcertId === selectedTcertId) ?? null) : null),
     [tcerts, selectedTcertId]
   );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null;
+      if (event.key.toLowerCase() !== 's' || target?.matches('input, textarea, select, [contenteditable="true"]') || !selectedTcert || !selectedTcert.hasSchema || signing || attesting || selectedSdocId || pinPromptOpen) return;
+      event.preventDefault();
+      void openSigning();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [attesting, pinPromptOpen, selectedSdocId, selectedTcert, signing]);
 
   /** Documents issued under the selected TCert (or all when none selected). */
   const selectedDocs = useMemo(
@@ -162,6 +180,19 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
   }, [docs, revocationState, selectedTcert, trustState]);
 
   const docCountFor = (tcertId: string): number => docs.filter((d) => d.tcertId === tcertId).length;
+
+  const openSigning = async (): Promise<void> => {
+    if (!selectedTcert) return;
+    if (!selectedTcert.hasPin) { setPinAuthorized(false); setSigning(true); return; }
+    if (await qrs().certificates.isPinAuthorized(selectedTcert.tcertId)) { await qrs().certificates.beginPinSession(selectedTcert.tcertId); setPinAuthorized(true); setSigning(true); }
+    else { setAuthorizedPin(undefined); setPinAuthorized(false); setPinPromptOpen(true); }
+  };
+
+  const exportSchema = async (): Promise<void> => {
+    if (!selectedTcert) return;
+    const result = await safe(qrs().certificates.exportSchema(selectedTcert.tcertId));
+    showNotice(result.ok && result.value.saved ? 'success' : result.ok ? 'info' : 'error', result.ok ? (result.value.saved ? `Schema exported: ${result.value.path ?? ''}` : 'Schema export cancelled') : result.error);
+  };
 
   /** Shared handling of a sync result: show errors or a summary, then refresh. */
   const applySyncResult = (res: { ok: true; value: SyncResult } | { ok: false; error: string }): void => {
@@ -333,7 +364,9 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
       return (
         <SignSdocPage
           tcert={selectedTcert}
-          onBack={() => setSigning(false)}
+          authorizedPin={authorizedPin}
+          pinAuthorized={pinAuthorized}
+          onBack={() => { void qrs().certificates.endPinSession(selectedTcert.tcertId); setSigning(false); setAuthorizedPin(undefined); setPinAuthorized(false); }}
           onIssued={onIssued}
           showNotice={showNotice}
         />
@@ -371,6 +404,7 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
             <Typography variant="h5">{selectedTcert.name}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <OverflowMenu actions={[...(selectedTcert.hasSchema ? [{ label: 'Export schema', onClick: () => void exportSchema() }] : []), ...(selectedTcert.own ? [{ label: selectedTcert.hasPin ? 'Manage PIN' : 'Set PIN', onClick: () => setPinDialogOpen(true) }] : []), { label: 'Revoke TCert', color: 'error', onClick: () => void revokeSelectedTcert() }, ...(selectedTcert.isCa ? [{ label: 'Attest a TCert', onClick: () => setAttesting(true) }] : [])]} />
             {(selectedTcert.endpoints?.length ?? 0) > 0 && (
               <Button
                 variant="outlined"
@@ -387,10 +421,10 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
                 variant="contained"
                 size="small"
                 startIcon={<EditNoteIcon />}
-                onClick={() => setSigning(true)}
+                onClick={() => { setAuthorizedPin(undefined); void openSigning(); }}
                 disabled={Boolean(selectedTcert.revoked)}
               >
-                {t('documents.signNew')}
+                {t('documents.signNew')} (S)
               </Button>
             )}
           </Box>
@@ -415,7 +449,12 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
           </Alert>
         )}
 
-        <Card sx={{ mb: 2 }}>
+        <Tabs value={tcertInfoTab} onChange={(_, value: string) => setTcertInfoTab(value)} sx={{ mb: 2 }}>
+          <Tab value="details" label="TCert details" />
+          <Tab value="endpoints" label="Endpoints" />
+        </Tabs>
+
+        {tcertInfoTab === 'details' ? <Card sx={{ mb: 2 }}>
           <CardContent>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
               <Box>
@@ -468,13 +507,12 @@ export function DocumentsPage({ showNotice, onVerify, initialTcertId, onInitialT
                   qrTitle="TCert QR"
                   showNotice={showNotice}
                 />
-            <OverflowMenu actions={[{ label: 'Revoke TCert', color: 'error', onClick: () => void revokeSelectedTcert() }, ...(selectedTcert.isCa ? [{ label: 'Attest a TCert', onClick: () => setAttesting(true) }] : [])]} />
               </Box>
             </Box>
           </CardContent>
-        </Card>
-
-        <EndpointManager tcert={selectedTcert} onChanged={() => void reload()} showNotice={showNotice} />
+        </Card> : <EndpointManager tcert={selectedTcert} onChanged={() => void reload()} showNotice={showNotice} />}
+        <TcertPinDialog tcert={selectedTcert} open={pinDialogOpen} onClose={() => setPinDialogOpen(false)} onChanged={() => void reload()} showNotice={showNotice} />
+        <TcertPinPrompt tcert={selectedTcert} open={pinPromptOpen} onCancel={() => setPinPromptOpen(false)} onAuthorized={(pin) => { void qrs().certificates.beginPinSession(selectedTcert.tcertId); setAuthorizedPin(pin); setPinAuthorized(true); setPinPromptOpen(false); setSigning(true); }} />
 
         <Tabs value={certTab} onChange={(_, value: string) => setCertTab(value)} sx={{ mb: 2 }}>
           <Tab value="sdocs" label="Signed SDocs" />

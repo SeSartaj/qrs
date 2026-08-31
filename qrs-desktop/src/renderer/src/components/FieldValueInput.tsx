@@ -14,13 +14,14 @@ interface Props {
   showNotice?: (severity: 'success' | 'error' | 'info', text: string) => void;
   onAttachmentUploadState?: (fieldName: string, uploaded: boolean) => void;
   onAttachmentUploadBusy?: (fieldName: string, uploading: boolean) => void;
+  autoFocus?: boolean;
 }
 
 /**
  * Renders an input appropriate for a field type. Used at issuance time and shared
  * by all pages that need to collect field values.
  */
-export function FieldValueInput({ field, value, onChange, disabled, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy }: Props) {
+export function FieldValueInput({ field, value, onChange, disabled, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy, autoFocus }: Props) {
   // A field with a declared default is auto-filled at signing time (e.g. a hidden
   // `issuedAt` datetime) — it is not shown in the form.
   if (field.default !== undefined) return null;
@@ -35,6 +36,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(e) => onChange(e.target.value)}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
           helperText={required ? 'required' : undefined}
           slotProps={{ htmlInput: { dir: 'auto' } }}
         />
@@ -52,6 +54,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(e) => onChange(e.target.value)}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
           helperText={required ? 'required' : undefined}
           slotProps={{ htmlInput: { dir: 'auto' } }}
         />
@@ -67,6 +70,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(e) => onChange(e.target.value)}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
           helperText={options.length > 0 ? `Allowed: ${options.join(', ')}` : 'free text'}
         >
           {options.map((o) => (
@@ -92,6 +96,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(e) => onChange(Number(e.target.value))}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
         >
           {options.map((o, i) => (
             <MenuItem key={i} value={i}>
@@ -126,6 +131,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(v) => onChange(v)}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
           helperText="Entered in your local time; stored as UTC epoch seconds."
         />
       );
@@ -142,6 +148,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           }}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
         />
       );
     case 'date':
@@ -152,6 +159,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           value={typeof value === 'string' ? value : undefined}
           onChange={(v) => onChange(typeof v === 'string' && v ? v : undefined)}
           fullWidth
+          autoFocus={autoFocus}
         />
       );
     case 'datetime':
@@ -163,6 +171,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           epoch={false}
           onChange={onChange}
           fullWidth
+          autoFocus={autoFocus}
           disabled={disabled}
           helperText="Entered in your local time; stored as canonical UTC."
         />
@@ -174,6 +183,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           value={(value ?? {}) as { lat?: number; lon?: number }}
           onChange={onChange}
           disabled={disabled}
+          autoFocus={autoFocus}
         />
       );
     }
@@ -186,6 +196,7 @@ export function FieldValueInput({ field, value, onChange, disabled, attachmentCo
           onChange={(e) => onChange(e.target.value)}
           fullWidth
           disabled={disabled}
+          autoFocus={autoFocus}
           helperText="Signed but not stored in the document"
         />
       );

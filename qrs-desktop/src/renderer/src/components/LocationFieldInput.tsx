@@ -22,9 +22,10 @@ interface Props {
   onChange: (value: LocationValue) => void;
   disabled?: boolean;
   helper?: string;
+  autoFocus?: boolean;
 }
 
-export function LocationFieldInput({ label, value, onChange, disabled, helper }: Props) {
+export function LocationFieldInput({ label, value, onChange, disabled, helper, autoFocus }: Props) {
   const [pairText, setPairText] = useState<string>(formatLocationPair(value?.lat, value?.lon));
 
   // Sync the pair field when the value changes from outside (e.g. clearing).
@@ -57,6 +58,7 @@ export function LocationFieldInput({ label, value, onChange, disabled, helper }:
         onChange={(e) => handlePair(e.target.value)}
         fullWidth
         disabled={disabled}
+        autoFocus={autoFocus}
         size="small"
         sx={{ mt: 0.5 }}
       />

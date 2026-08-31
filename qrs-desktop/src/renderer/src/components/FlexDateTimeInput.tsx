@@ -28,6 +28,7 @@ interface Props {
   helperText?: string;
   fullWidth?: boolean;
   disabled?: boolean;
+  autoFocus?: boolean;
 }
 
 /**
@@ -35,7 +36,7 @@ interface Props {
  * setting (Gregorian / Jalali / Islamic) via `tri-calendar`, plus a local-time
  * input. The value reported is UTC epoch seconds; only the stored value is UTC.
  */
-export function FlexDateTimeInput({ label, kind, epoch = kind === 'datetimeEpoch', value, onChange, helperText, fullWidth, disabled }: Props) {
+export function FlexDateTimeInput({ label, kind, epoch = kind === 'datetimeEpoch', value, onChange, helperText, fullWidth, disabled, autoFocus }: Props) {
   const calendar = useCalendar();
   const rtl = isRtl(document.documentElement.lang);
 
@@ -87,6 +88,7 @@ export function FlexDateTimeInput({ label, kind, epoch = kind === 'datetimeEpoch
             label={label}
             value={shownInCalendar}
             onClick={openCalendar}
+            onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); openCalendar(); } }}
             placeholder="Pick a date"
             helperText={
               helperText ??
@@ -98,6 +100,7 @@ export function FlexDateTimeInput({ label, kind, epoch = kind === 'datetimeEpoch
             }
             fullWidth={fullWidth}
             disabled={disabled}
+            autoFocus={autoFocus}
             slotProps={{
               htmlInput: {
                 readOnly: true,

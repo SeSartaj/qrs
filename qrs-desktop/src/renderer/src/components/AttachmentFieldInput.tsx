@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Box, Button, Chip, Typography } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { attachmentContentType, type FieldSchema } from 'qrs-core';
@@ -15,6 +15,7 @@ interface Props {
   onAttachmentUploadState?: (fieldName: string, uploaded: boolean) => void;
   onAttachmentUploadBusy?: (fieldName: string, uploading: boolean) => void;
   disabled?: boolean;
+  autoFocus?: boolean;
 }
 
 /**
@@ -23,12 +24,13 @@ interface Props {
  * type is fixed by this field's signed TCert schema and cannot be changed while
  * signing a document.
  */
-export function AttachmentFieldInput({ field, value, onChange, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy, disabled }: Props) {
+export function AttachmentFieldInput({ field, value, onChange, attachmentContext, showNotice, onAttachmentUploadState, onAttachmentUploadBusy, disabled, autoFocus }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AttachmentSubmitResult | null>(null);
   const contentType = attachmentContentType(field);
   const ref = (value as { hash?: unknown } | null | undefined) ?? null;
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hash = typeof value === 'string' ? value : typeof ref?.hash === 'string' ? ref.hash : undefined;
 
   const onFile = async (file: File | null): Promise<void> => {
@@ -98,9 +100,12 @@ export function AttachmentFieldInput({ field, value, onChange, attachmentContext
           size="small"
           startIcon={<CloudUploadIcon />}
           disabled={busy || disabled}
+          autoFocus={autoFocus}
+          onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); fileInputRef.current?.click(); } }}
         >
           {busy ? 'Uploading…' : fileName ?? 'Choose file'}
           <input
+            ref={fileInputRef}
             type="file"
             accept={contentType === 'application/octet-stream' ? undefined : contentType}
             hidden
