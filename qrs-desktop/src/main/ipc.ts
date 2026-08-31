@@ -43,6 +43,7 @@ import { decodeObject, verifyWithDetail } from './objects.js';
 import { listCertificates, listDocuments, summarizeDocument, summarizeTcert } from './summaries.js';
 import { syncAll, syncTcert } from './sync.js';
 import { TcertPinStore } from './tcertPinStore.js';
+import { FILE_NAME, makeBackup, restoreBackup } from './backup.js';
 
 /** Union of the effective distribution endpoints across every TCert of a key. */
 async function findEndpoints(rt: DesktopRuntime, keyId: string): Promise<string[]> {
@@ -587,6 +588,25 @@ export function registerIpc(rt: DesktopRuntime): void {
   });
   ipcMain.handle(IPC.config.set, async (_e, config: GlobalConfig): Promise<GlobalConfig> => {
     return rt.config.set(config);
+  });
+  ipcMain.handle(IPC.backup.export, async (_e, password: string) => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const result = await dialog.showSaveDialog({ title: 'Export encrypted QRS backup', defaultPath: `${FILE_NAME.replace('.json', '')}-${stamp}.json`, filters: [{ name: 'QRS backup', extensions: ['json'] }] });
+    if (result.canceled || !result.filePath) return { saved: false };
+    try { writeFileSync(result.filePath, makeBackup(rt.dataDir, password), 'utf8'); return { saved: true, path: result.filePath }; }
+    catch (error) { return { saved: false, error: error instanceof Error ? error.message : 'Backup export failed.' }; }
+  });
+  ipcMain.handle(IPC.backup.chooseImport, async () => {
+    const result = await dialog.showOpenDialog({ title: 'Import encrypted QRS backup', properties: ['openFile'], filters: [{ name: 'QRS backup', extensions: ['json'] }] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return readFileSync(result.filePaths[0], 'utf8');
+  });
+  ipcMain.handle(IPC.backup.import, async (_e, password: string, encryptedBackup: string) => {
+    restoreBackup(rt.dataDir, encryptedBackup, password);
+    // File-backed stores are intentionally cached in memory. Relaunch after a
+    // successful restore so every store reloads the restored snapshot together.
+    setTimeout(() => { app.relaunch(); app.exit(0); }, 250);
+    return { restored: true, restartRequired: true };
   });
 
   /* ---------------- context replies (renderer -> main) ---------------- */

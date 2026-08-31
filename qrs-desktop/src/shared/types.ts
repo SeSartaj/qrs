@@ -88,6 +88,7 @@ export const IPC = {
     get: 'config:get', // read the whole global config
     set: 'config:set', // replace the whole global config
   },
+  backup: { export: 'backup:export', chooseImport: 'backup:chooseImport', import: 'backup:import' },
   context: {
     request: 'context:request', // main -> renderer
     reply: 'context:reply', // renderer -> main
@@ -550,6 +551,11 @@ export interface QrsApi {
     get(): Promise<GlobalConfig>;
     /** Replace the whole global config. */
     set(config: GlobalConfig): Promise<GlobalConfig>;
+  };
+  backup: {
+    export(password: string): Promise<{ saved: boolean; path?: string; error?: string }>;
+    chooseImport(): Promise<string | null>;
+    import(password: string, encryptedBackup: string): Promise<{ restored: boolean; restartRequired: boolean }>;
   };
   /** Subscribe to input requests (location/secret) from the main process. */
   onContextRequest(cb: (req: ContextRequest) => void): () => void;

@@ -14,6 +14,10 @@ import {
   Select,
   Typography,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import BadgeIcon from '@mui/icons-material/Badge';
 import LockIcon from '@mui/icons-material/Lock';
@@ -35,6 +39,11 @@ export function SettingsPage({ onNavigate }: { onNavigate: (p: PageId) => void }
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [backupAction, setBackupAction] = useState<'export' | 'import' | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
   const calendar = useCalendar();
 
   useEffect(() => {
@@ -59,6 +68,30 @@ export function SettingsPage({ onNavigate }: { onNavigate: (p: PageId) => void }
     const result = await safe(qrs().keys.removePassword(password));
     if (!result.ok) { setPasswordError(result.error); return; }
     setPassword(''); setPasswordStatus({ configured: false, unlocked: true });
+  };
+
+  const exportBackup = async (): Promise<void> => {
+    setBackupError(null);
+    const result = await safe(qrs().backup.export(backupPassword));
+    if (!result.ok) { setBackupError(result.error); return; }
+    setBackupMessage(result.value.saved ? `Backup exported to ${result.value.path ?? 'selected file'}.` : 'Backup export cancelled.');
+    setBackupAction(null); setBackupPassword('');
+  };
+  const chooseBackupImport = async (): Promise<void> => {
+    setBackupError(null);
+    const result = await safe(qrs().backup.chooseImport());
+    if (!result.ok) { setBackupError(result.error); return; }
+    if (result.value === null) return;
+    setSelectedBackup(result.value);
+    setBackupAction('import');
+  };
+  const importBackup = async (): Promise<void> => {
+    setBackupError(null);
+    if (!selectedBackup) { setBackupError('Select a backup file first.'); return; }
+    const result = await safe(qrs().backup.import(backupPassword, selectedBackup));
+    if (!result.ok) { setBackupError(result.error); return; }
+    setBackupMessage('Backup restored. The app will now reopen with the restored data.');
+    setBackupAction(null); setBackupPassword(''); setSelectedBackup(null);
   };
 
   const rows = info
@@ -110,6 +143,31 @@ export function SettingsPage({ onNavigate }: { onNavigate: (p: PageId) => void }
           </Box>
         </CardContent>
       </Card>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="h6">Encrypted data backup</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Backups contain your local QRS data and are encrypted with a password. Keep the password safe; it cannot be recovered.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+            <Button variant="outlined" onClick={() => { setBackupError(null); setBackupAction('export'); }}>Export backup</Button>
+            <Button variant="outlined" onClick={() => void chooseBackupImport()}>Import backup</Button>
+          </Box>
+          {backupMessage && <Alert severity={backupMessage.startsWith('Backup restored') || backupMessage.startsWith('Backup exported') ? 'success' : 'error'} sx={{ mt: 1 }}>{backupMessage}</Alert>}
+        </CardContent>
+      </Card>
+      <Dialog open={backupAction !== null} onClose={() => { setBackupAction(null); setBackupError(null); }} fullWidth maxWidth="xs">
+        <DialogTitle>{backupAction === 'export' ? 'Export encrypted backup' : 'Import encrypted backup'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth margin="dense" type="password" label="Backup password" value={backupPassword} onChange={(e) => setBackupPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void (backupAction === 'export' ? exportBackup() : importBackup()); }} helperText="At least 8 characters" />
+          {backupError && <Alert severity="error" sx={{ mt: 1 }}>{backupError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBackupAction(null)}>Cancel</Button>
+          <Button variant="contained" onClick={() => void (backupAction === 'export' ? exportBackup() : importBackup())}>{backupAction === 'export' ? 'Export' : 'Import'}</Button>
+        </DialogActions>
+      </Dialog>
 
       <Card sx={{ mb: 2 }}>
         <CardContent>

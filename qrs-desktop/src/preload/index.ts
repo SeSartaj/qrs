@@ -117,6 +117,11 @@ const api: QrsApi = {
     get: () => ipcRenderer.invoke(IPC.config.get),
     set: (config: GlobalConfig) => ipcRenderer.invoke(IPC.config.set, config),
   },
+  backup: {
+    export: (password: string) => ipcRenderer.invoke(IPC.backup.export, password),
+    chooseImport: () => ipcRenderer.invoke(IPC.backup.chooseImport),
+    import: (password: string, encryptedBackup: string) => ipcRenderer.invoke(IPC.backup.import, password, encryptedBackup),
+  },
   onContextRequest: (cb: (req: ContextRequest) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, req: ContextRequest): void => cb(req);
     ipcRenderer.on(IPC.context.request, listener);
